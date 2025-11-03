@@ -25,10 +25,6 @@ impl PartialEq for Lambda {
     fn eq(&self, other: &Self) -> bool {
         other.name == self.name
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        other.name != self.name
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +39,7 @@ pub fn interpret(expr: BoxExpr) -> Result<Value> {
     recurse(expr, HashMap::new())
 }
 
+#[allow(clippy::boxed_local)]
 fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
         Expression::Null => Ok(Value::Null),
