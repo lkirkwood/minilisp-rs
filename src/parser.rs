@@ -61,6 +61,25 @@ pub enum ParenExpression {
     NullCheck {
         value: BoxExpr,
     },
+    LessThan {
+        first: BoxExpr,
+        second: BoxExpr,
+    },
+    GreaterThan {
+        first: BoxExpr,
+        second: BoxExpr,
+    },
+    LogicalAnd {
+        first: BoxExpr,
+        second: BoxExpr,
+    },
+    LogicalOr {
+        first: BoxExpr,
+        second: BoxExpr,
+    },
+    LogicalNot {
+        value: BoxExpr,
+    },
     Exprs {
         exprs: Vec<BoxExpr>,
     },
@@ -85,6 +104,11 @@ enum Terminal {
     Cdr,
     NullCheck,
     Null,
+    LessThan,
+    GreaterThan,
+    LogicalAnd,
+    LogicalOr,
+    LogicalNot,
 }
 
 impl From<Token> for Terminal {
@@ -106,6 +130,11 @@ impl From<Token> for Terminal {
             Token::Cdr => Self::Cdr,
             Token::NullCheck => Self::NullCheck,
             Token::Null => Self::Null,
+            Token::LessThan => Self::LessThan,
+            Token::GreaterThan => Self::GreaterThan,
+            Token::LogicalAnd => Self::LogicalAnd,
+            Token::LogicalOr => Self::LogicalOr,
+            Token::LogicalNot => Self::LogicalNot,
         }
     }
 }
@@ -256,6 +285,39 @@ static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<StackSymb
                 (Terminal::NullCheck, NonTerminal::ParenExpression),
                 vec![term!(NullCheck), nonterm!(Expression)],
             ),
+            // paren expression -> less than
+            (
+                (Terminal::LessThan, NonTerminal::ParenExpression),
+                vec![term!(LessThan), nonterm!(Expression), nonterm!(Expression)],
+            ),
+            // paren expression -> greater than
+            (
+                (Terminal::GreaterThan, NonTerminal::ParenExpression),
+                vec![
+                    term!(GreaterThan),
+                    nonterm!(Expression),
+                    nonterm!(Expression),
+                ],
+            ),
+            // paren expression -> logical and
+            (
+                (Terminal::LogicalAnd, NonTerminal::ParenExpression),
+                vec![
+                    term!(LogicalAnd),
+                    nonterm!(Expression),
+                    nonterm!(Expression),
+                ],
+            ),
+            // paren expression -> logical or
+            (
+                (Terminal::LogicalOr, NonTerminal::ParenExpression),
+                vec![term!(LogicalOr), nonterm!(Expression), nonterm!(Expression)],
+            ),
+            // paren expression -> logical not
+            (
+                (Terminal::LogicalNot, NonTerminal::ParenExpression),
+                vec![term!(LogicalNot), nonterm!(Expression)],
+            ),
             // paren expression -> exprs
             (
                 (Terminal::Number, NonTerminal::ParenExpression),
@@ -355,7 +417,15 @@ impl ParenExprBuilder {
                 self.terms.push(expr);
                 self.terms_finished = true;
             }
-            Token::Plus | Token::Minus | Token::Times | Token::Equals | Token::Cons => {
+            Token::Plus
+            | Token::Minus
+            | Token::Times
+            | Token::Equals
+            | Token::Cons
+            | Token::LessThan
+            | Token::GreaterThan
+            | Token::LogicalAnd
+            | Token::LogicalOr => {
                 self.terms.push(expr);
                 if self.terms.len() == 2 {
                     self.terms_finished = true;
@@ -395,7 +465,7 @@ impl ParenExprBuilder {
                     }
                 }
             }
-            Token::Car | Token::Cdr | Token::NullCheck => {
+            Token::Car | Token::Cdr | Token::NullCheck | Token::LogicalNot => {
                 self.terms.push(expr);
                 if self.terms.len() == 1 {
                     self.terms_finished = true;
@@ -584,6 +654,65 @@ impl ParenExprBuilder {
                 }
                 let value = self.terms.pop().unwrap();
                 Ok(boxparexpr!(ParenExpression::NullCheck { value }))
+            }
+            Token::LessThan => {
+                if self.terms.len() != 2 {
+                    bail!(
+                        "Program must be invalid, because a less than expression \
+                         takes 2 terms, not {}",
+                        self.terms.len()
+                    )
+                }
+                let second = self.terms.pop().unwrap();
+                let first = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::LessThan { first, second }))
+            }
+            Token::GreaterThan => {
+                if self.terms.len() != 2 {
+                    bail!(
+                        "Program must be invalid, because a greater than expression \
+                         takes 2 terms, not {}",
+                        self.terms.len()
+                    )
+                }
+                let second = self.terms.pop().unwrap();
+                let first = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::GreaterThan { first, second }))
+            }
+            Token::LogicalAnd => {
+                if self.terms.len() != 2 {
+                    bail!(
+                        "Program must be invalid, because a logical \"and\" expression \
+                         takes 2 terms, not {}",
+                        self.terms.len()
+                    )
+                }
+                let second = self.terms.pop().unwrap();
+                let first = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::LogicalAnd { first, second }))
+            }
+            Token::LogicalOr => {
+                if self.terms.len() != 2 {
+                    bail!(
+                        "Program must be invalid, because a logical \"or\" expression \
+                         takes 2 terms, not {}",
+                        self.terms.len()
+                    )
+                }
+                let second = self.terms.pop().unwrap();
+                let first = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::LogicalOr { first, second }))
+            }
+            Token::LogicalNot => {
+                if self.terms.len() != 1 {
+                    bail!(
+                        "Program must be invalid, because a logical \"not\" expression \
+                         takes 2 terms, not {}",
+                        self.terms.len()
+                    )
+                }
+                let value = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::LogicalNot { value }))
             }
             Token::RightParen => bail!(
                 "Something went wrong internally; can't finish a paren expression \
@@ -831,13 +960,47 @@ mod tests {
     #[test]
     fn parse_binding() {
         assert_eq!(
-            parse(tokenise("(≜ x 10 (+ x x)) ").unwrap()).unwrap(),
+            parse(tokenise("(≜ x 10 (+ x x))").unwrap()).unwrap(),
             boxparexpr!(ParenExpression::Binding {
                 name: "x".to_string(),
                 value: Box::new(Expression::Number(10)),
                 body: boxparexpr!(ParenExpression::Plus {
                     first: Box::new(Expression::Identifier("x".to_string())),
                     second: Box::new(Expression::Identifier("x".to_string()))
+                })
+            })
+        );
+    }
+
+    #[test]
+    fn parse_comparison() {
+        assert_eq!(
+            parse(tokenise("(≜ x 10 (‹ x (+ x 1)))").unwrap()).unwrap(),
+            boxparexpr!(ParenExpression::Binding {
+                name: "x".to_string(),
+                value: Box::new(Expression::Number(10)),
+                body: boxparexpr!(ParenExpression::LessThan {
+                    first: Box::new(Expression::Identifier("x".to_string())),
+                    second: boxparexpr!(ParenExpression::Plus {
+                        first: Box::new(Expression::Identifier("x".to_string())),
+                        second: Box::new(Expression::Number(1))
+                    })
+                })
+            })
+        );
+    }
+
+    #[test]
+    fn parse_logic() {
+        assert_eq!(
+            parse(tokenise("(∧ 1 (∨ 0 (¬ 0)))").unwrap()).unwrap(),
+            boxparexpr!(ParenExpression::LogicalAnd {
+                first: Box::new(Expression::Number(1)),
+                second: boxparexpr!(ParenExpression::LogicalOr {
+                    first: Box::new(Expression::Number(0)),
+                    second: boxparexpr!(ParenExpression::LogicalNot {
+                        value: Box::new(Expression::Number(0))
+                    })
                 })
             })
         );

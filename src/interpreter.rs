@@ -149,6 +149,68 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                     Ok(Value::Number(0))
                 }
             }
+            ParenExpression::LessThan { first, second } => {
+                if let Value::Number(first_num) = recurse(first, idents.clone())?
+                    && let Value::Number(second_num) = recurse(second, idents)?
+                {
+                    Ok(Value::Number(usize::from(first_num < second_num)))
+                } else {
+                    bail!(
+                        "The program must be invalid, because you can't use \
+                         ‹ on a non-numeric value."
+                    )
+                }
+            }
+            ParenExpression::GreaterThan { first, second } => {
+                if let Value::Number(first_num) = recurse(first, idents.clone())?
+                    && let Value::Number(second_num) = recurse(second, idents)?
+                {
+                    Ok(Value::Number(usize::from(first_num > second_num)))
+                } else {
+                    bail!(
+                        "The program must be invalid, because you can't use \
+                         › on a non-numeric value."
+                    )
+                }
+            }
+            ParenExpression::LogicalAnd { first, second } => {
+                if let Value::Number(first_num) = recurse(first, idents.clone())?
+                    && let Value::Number(second_num) = recurse(second, idents)?
+                {
+                    Ok(Value::Number(usize::from(
+                        first_num != 0 && second_num != 0,
+                    )))
+                } else {
+                    bail!(
+                        "The program must be invalid, because you can't use \
+                         ∧ on a non-numeric value."
+                    )
+                }
+            }
+            ParenExpression::LogicalOr { first, second } => {
+                if let Value::Number(first_num) = recurse(first, idents.clone())?
+                    && let Value::Number(second_num) = recurse(second, idents)?
+                {
+                    Ok(Value::Number(usize::from(
+                        first_num != 0 || second_num != 0,
+                    )))
+                } else {
+                    bail!(
+                        "The program must be invalid, because you can't use \
+                         ∨ on a non-numeric value."
+                    )
+                }
+            }
+            ParenExpression::LogicalNot { value } => {
+                if let Value::Number(value_num) = recurse(value, idents.clone())? {
+                    Ok(Value::Number(usize::from(value_num == 0)))
+                } else {
+                    bail!(
+                        "The program must be invalid, because you can't use \
+                           ¬ on a non-numeric value."
+                    )
+                }
+            }
             ParenExpression::Exprs { exprs } => {
                 let mut expr_iter = exprs.into_iter();
                 // TODO decide if variadic forms are even needed - lambdas only take one arg!
@@ -208,5 +270,35 @@ mod tests {
     #[test]
     fn interpret_binding() {
         assert_eq!(interpret_str("(≜ x 10 (+ x x))"), Value::Number(20));
+    }
+
+    #[test]
+    fn parse_less_than() {
+        assert_eq!(interpret_str("(≜ x 10 (‹ x (+ x 1)))"), Value::Number(1));
+    }
+
+    #[test]
+    fn parse_greater_than() {
+        assert_eq!(interpret_str("(≜ x 10 (› x (+ x 1)))"), Value::Number(0));
+    }
+
+    #[test]
+    fn parse_logic_1() {
+        assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 0)))"), Value::Number(1));
+    }
+
+    #[test]
+    fn parse_logic_2() {
+        assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 1)))"), Value::Number(0));
+    }
+
+    #[test]
+    fn parse_logic_3() {
+        assert_eq!(interpret_str("(∧ 1 (∨ 1 (¬ 1)))"), Value::Number(1));
+    }
+
+    #[test]
+    fn parse_logic_4() {
+        assert_eq!(interpret_str("(∧ 0 (∨ 1 (¬ 1)))"), Value::Number(0));
     }
 }

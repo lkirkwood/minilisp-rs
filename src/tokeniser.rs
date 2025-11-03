@@ -18,6 +18,11 @@ pub enum Token {
     Cdr,
     NullCheck,
     Null,
+    LessThan,
+    GreaterThan,
+    LogicalAnd,
+    LogicalOr,
+    LogicalNot,
 }
 
 enum BufferedType {
@@ -90,6 +95,11 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '←' => tokens.push(Token::Car),
             '→' => tokens.push(Token::Cdr),
             '∘' => tokens.push(Token::NullCheck),
+            '‹' => tokens.push(Token::LessThan),
+            '›' => tokens.push(Token::GreaterThan),
+            '∧' => tokens.push(Token::LogicalAnd),
+            '∨' => tokens.push(Token::LogicalOr),
+            '¬' => tokens.push(Token::LogicalNot),
             _ => bail!("Unexpected character: {character}"),
         }
     }
