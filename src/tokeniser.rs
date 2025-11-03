@@ -72,7 +72,7 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             }
             ')' => {
                 flush_char_buf(&mut buf_type, &mut char_buf, &mut tokens);
-                tokens.push(Token::RightParen)
+                tokens.push(Token::RightParen);
             }
             ' ' | '\t' | '\n' => {
                 flush_char_buf(&mut buf_type, &mut char_buf, &mut tokens);

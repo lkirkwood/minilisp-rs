@@ -39,7 +39,7 @@ pub fn interpret(expr: BoxExpr) -> Result<Value> {
     recurse(expr, HashMap::new())
 }
 
-#[allow(clippy::boxed_local)]
+#[allow(clippy::boxed_local, clippy::too_many_lines)]
 fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
         Expression::Null => Ok(Value::Null),
@@ -86,7 +86,7 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 if let Value::Number(first_num) = recurse(first, idents.clone())?
                     && let Value::Number(second_num) = recurse(second, idents)?
                 {
-                    Ok(Value::Number(if first_num == second_num { 1 } else { 0 }))
+                    Ok(Value::Number(usize::from(first_num == second_num)))
                 } else {
                     bail!("The program must be invalid, because you can't use = on a null value.")
                 }
@@ -109,11 +109,11 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 }
             }
             ParenExpression::Lambda { name, body } => Ok(Value::Lambda(Lambda {
-                name: name.to_owned(),
+                name: name.clone(),
                 func: Rc::new(move |idents| recurse(body.clone(), idents)),
             })),
             ParenExpression::Binding { name, value, body } => {
-                idents.insert(name.to_owned(), recurse(value, idents.clone())?);
+                idents.insert(name.clone(), recurse(value, idents.clone())?);
                 recurse(body, idents)
             }
             ParenExpression::Cons { car, cdr } => Ok(Value::Cons((

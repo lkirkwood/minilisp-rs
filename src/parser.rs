@@ -1,12 +1,11 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, sync::LazyLock};
 
 use crate::tokeniser::Token;
 use anyhow::{Result, bail};
-use lazy_static::lazy_static;
 
 /// A boxed Expression to allow recursive type structure.
 pub type BoxExpr = Box<Expression>;
-/// A boxed ParenExpression to allow recursive type structure.
+/// A boxed `ParenExpression` to allow recursive type structure.
 pub type BoxParenExpr = Box<ParenExpression>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -142,48 +141,45 @@ macro_rules! nonterm {
     };
 }
 
-lazy_static! {
-    /// The LL(1) transition table.
-    static ref TRANSITION_TABLE: HashMap<(Terminal, NonTerminal), Vec<StackSymbol>> =
+/// The LL(1) transition table.
+static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<StackSymbol>>> =
+    LazyLock::new(|| {
         HashMap::from([
             // expression -> number
             (
                 (Terminal::Number, NonTerminal::Expression),
-                vec![term!(Number)]
+                vec![term!(Number)],
             ),
             // expression -> identifier
             (
                 (Terminal::Identifier, NonTerminal::Expression),
-                vec![term!(Identifier)]
+                vec![term!(Identifier)],
             ),
             // expression -> null
-            (
-                (Terminal::Null, NonTerminal::Expression),
-                vec![term!(Null)]
-            ),
+            ((Terminal::Null, NonTerminal::Expression), vec![term!(Null)]),
             // expression -> paren expression
             (
                 (Terminal::LeftParen, NonTerminal::Expression),
                 vec![
                     term!(LeftParen),
                     nonterm!(ParenExpression),
-                    term!(RightParen)
+                    term!(RightParen),
                 ],
             ),
             // expressions -> number
             (
                 (Terminal::Number, NonTerminal::Expressions),
-                vec![term!(Number), nonterm!(Expressions)]
+                vec![term!(Number), nonterm!(Expressions)],
             ),
             // expressions -> identifier
             (
                 (Terminal::Identifier, NonTerminal::Expressions),
-                vec![term!(Identifier), nonterm!(Expressions)]
+                vec![term!(Identifier), nonterm!(Expressions)],
             ),
             // expressions -> null
             (
                 (Terminal::Null, NonTerminal::Expressions),
-                vec![term!(Null), nonterm!(Expressions)]
+                vec![term!(Null), nonterm!(Expressions)],
             ),
             // expressions -> paren expression
             (
@@ -192,114 +188,96 @@ lazy_static! {
                     term!(LeftParen),
                     nonterm!(ParenExpression),
                     term!(RightParen),
-                    nonterm!(Expressions)
+                    nonterm!(Expressions),
                 ],
             ),
             // paren expression -> plus
             (
                 (Terminal::Plus, NonTerminal::ParenExpression),
-                vec![
-                    term!(Plus), nonterm!(Expression), nonterm!(Expression)
-                ],
+                vec![term!(Plus), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> minus
             (
                 (Terminal::Minus, NonTerminal::ParenExpression),
-                vec![
-                    term!(Minus), nonterm!(Expression), nonterm!(Expression)
-                ],
+                vec![term!(Minus), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> times
             (
                 (Terminal::Times, NonTerminal::ParenExpression),
-                vec![
-                    term!(Times), nonterm!(Expression), nonterm!(Expression)
-                ],
+                vec![term!(Times), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> equals
             (
                 (Terminal::Equals, NonTerminal::ParenExpression),
-                vec![
-                    term!(Equals), nonterm!(Expression), nonterm!(Expression)
-                ],
+                vec![term!(Equals), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> condition
             (
                 (Terminal::Condition, NonTerminal::ParenExpression),
                 vec![
-                    term!(Condition), nonterm!(Expression), nonterm!(Expression), nonterm!(Expression)
+                    term!(Condition),
+                    nonterm!(Expression),
+                    nonterm!(Expression),
+                    nonterm!(Expression),
                 ],
             ),
             // paren expression -> lambda
             (
                 (Terminal::Lambda, NonTerminal::ParenExpression),
-                vec![
-                    term!(Lambda), term!(Identifier), nonterm!(Expression)
-                ],
+                vec![term!(Lambda), term!(Identifier), nonterm!(Expression)],
             ),
             // paren expression -> binding
             (
                 (Terminal::Binding, NonTerminal::ParenExpression),
                 vec![
-                    term!(Binding), term!(Identifier), nonterm!(Expression), nonterm!(Expression)
+                    term!(Binding),
+                    term!(Identifier),
+                    nonterm!(Expression),
+                    nonterm!(Expression),
                 ],
             ),
             // paren expression -> cons
             (
                 (Terminal::Cons, NonTerminal::ParenExpression),
-                vec![
-                    term!(Cons), nonterm!(Expression), nonterm!(Expression)
-                ],
+                vec![term!(Cons), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> car
             (
                 (Terminal::Car, NonTerminal::ParenExpression),
-                vec![
-                    term!(Car), nonterm!(Expression)
-                ],
+                vec![term!(Car), nonterm!(Expression)],
             ),
             // paren expression -> cdr
             (
                 (Terminal::Cdr, NonTerminal::ParenExpression),
-                vec![
-                    term!(Cdr), nonterm!(Expression)
-                ],
+                vec![term!(Cdr), nonterm!(Expression)],
             ),
             // paren expression -> nullcheck
             (
                 (Terminal::NullCheck, NonTerminal::ParenExpression),
-                vec![
-                    term!(NullCheck), nonterm!(Expression)
-                ],
+                vec![term!(NullCheck), nonterm!(Expression)],
             ),
             // paren expression -> exprs
             (
                 (Terminal::Number, NonTerminal::ParenExpression),
-                vec![
-                    nonterm!(Expressions)
-                ],
+                vec![nonterm!(Expressions)],
             ),
             // paren expression -> exprs
             (
                 (Terminal::Identifier, NonTerminal::ParenExpression),
-                vec![
-                    nonterm!(Expressions)
-                ],
+                vec![nonterm!(Expressions)],
             ),
             // paren expression -> exprs
             (
                 (Terminal::LeftParen, NonTerminal::ParenExpression),
-                vec![
-                    nonterm!(Expressions)
-                ],
+                vec![nonterm!(Expressions)],
             ),
             // exprs -> right paren
             (
                 (Terminal::RightParen, NonTerminal::Expressions),
                 vec![nonterm!(Epsilon)],
             ),
-        ]);
-}
+        ])
+    });
 
 /// A builder for Expressions.
 #[derive(Debug)]
@@ -334,7 +312,7 @@ impl ExprBuilder {
     }
 }
 
-/// A builder for ParenExpressions.
+/// A builder for `ParenExpressions`.
 #[derive(Debug)]
 pub struct ParenExprBuilder {
     token: Token,
@@ -343,7 +321,7 @@ pub struct ParenExprBuilder {
     paren_closed: bool,
 }
 
-/// Convenience macro for creating a BoxExpr from a ParenExpression.
+/// Convenience macro for creating a `BoxExpr` from a `ParenExpression`.
 macro_rules! boxparexpr {
     ($parexpr:expr) => {
         Box::new(Expression::Paren(Box::new($parexpr)))
@@ -377,25 +355,7 @@ impl ParenExprBuilder {
                 self.terms.push(expr);
                 self.terms_finished = true;
             }
-            Token::Plus => {
-                self.terms.push(expr);
-                if self.terms.len() == 2 {
-                    self.terms_finished = true;
-                }
-            }
-            Token::Minus => {
-                self.terms.push(expr);
-                if self.terms.len() == 2 {
-                    self.terms_finished = true;
-                }
-            }
-            Token::Times => {
-                self.terms.push(expr);
-                if self.terms.len() == 2 {
-                    self.terms_finished = true;
-                }
-            }
-            Token::Equals => {
+            Token::Plus | Token::Minus | Token::Times | Token::Equals | Token::Cons => {
                 self.terms.push(expr);
                 if self.terms.len() == 2 {
                     self.terms_finished = true;
@@ -435,38 +395,22 @@ impl ParenExprBuilder {
                     }
                 }
             }
-            Token::Cons => {
-                self.terms.push(expr);
-                if self.terms.len() == 2 {
-                    self.terms_finished = true;
-                }
-            }
-            Token::Car => {
+            Token::Car | Token::Cdr | Token::NullCheck => {
                 self.terms.push(expr);
                 if self.terms.len() == 1 {
                     self.terms_finished = true;
                 }
             }
-            Token::Cdr => {
-                self.terms.push(expr);
-                if self.terms.len() == 1 {
-                    self.terms_finished = true;
-                }
-            }
-            Token::NullCheck => {
-                self.terms.push(expr);
-                if self.terms.len() == 1 {
-                    self.terms_finished = true;
-                }
-            }
-            other => bail!(
-                "Something went wrong internally; can't build a paren expression for the token {other:?}",
+            Token::RightParen => bail!(
+                "Something went wrong internally; can't build a paren expression \
+                 that started with a right parenthesis.",
             ),
         }
 
         Ok(())
     }
 
+    #[allow(clippy::similar_names, clippy::too_many_lines)]
     fn finish(&mut self) -> Result<BoxExpr> {
         if !self.finished() {
             bail!("Something went wrong internally; can't finish an unfinished paren expression.")
@@ -494,7 +438,8 @@ impl ParenExprBuilder {
             Token::Plus => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a plus expression takes 2 terms, not {}.",
+                        "Program must be invalid, because a plus expression \
+                         takes 2 terms, not {}.",
                         self.terms.len()
                     )
                 }
@@ -505,7 +450,8 @@ impl ParenExprBuilder {
             Token::Minus => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a minus expression takes 2 terms, not {}",
+                        "Program must be invalid, because a minus expression \
+                         takes 2 terms, not {}",
                         self.terms.len()
                     )
                 }
@@ -516,7 +462,8 @@ impl ParenExprBuilder {
             Token::Times => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a times expression takes 2 terms, not {}",
+                        "Program must be invalid, because a times expression \
+                         takes 2 terms, not {}",
                         self.terms.len()
                     )
                 }
@@ -527,7 +474,8 @@ impl ParenExprBuilder {
             Token::Equals => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because an equals expression takes 2 terms, not {}",
+                        "Program must be invalid, because an equals expression \
+                         takes 2 terms, not {}",
                         self.terms.len()
                     )
                 }
@@ -538,7 +486,8 @@ impl ParenExprBuilder {
             Token::Condition => {
                 if self.terms.len() != 3 {
                     bail!(
-                        "Program must be invalid, because a conditional takes 3 terms, not {}",
+                        "Program must be invalid, because a conditional \
+                         takes 3 terms, not {}",
                         self.terms.len()
                     )
                 }
@@ -565,14 +514,16 @@ impl ParenExprBuilder {
                     Ok(boxparexpr!(ParenExpression::Lambda { name, body }))
                 } else {
                     bail!(
-                        "Program must be invalid, because a lambdas first term must be an identifier."
+                        "Program must be invalid, because a lambdas first term \
+                         must be an identifier."
                     )
                 }
             }
             Token::Binding => {
                 if self.terms.len() != 3 {
                     bail!(
-                        "Program must be invalid, because a binding takes 3 terms, not {}",
+                        "Program must be invalid, because a binding takes \
+                         3 terms, not {}",
                         self.terms.len()
                     )
                 }
@@ -584,14 +535,16 @@ impl ParenExprBuilder {
                     Ok(boxparexpr!(ParenExpression::Binding { name, value, body }))
                 } else {
                     bail!(
-                        "Program must be invalid, because a bindings first term must be an identifier."
+                        "Program must be invalid, because a bindings first term \
+                         must be an identifier."
                     )
                 }
             }
             Token::Cons => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a cons expression takes 2 terms, not {}.",
+                        "Program must be invalid, because a cons expression \
+                         takes 2 terms, not {}.",
                         self.terms.len()
                     )
                 }
@@ -602,7 +555,8 @@ impl ParenExprBuilder {
             Token::Car => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a car expression takes 1 term, not {}.",
+                        "Program must be invalid, because a car expression \
+                         takes 1 term, not {}.",
                         self.terms.len()
                     )
                 }
@@ -612,7 +566,8 @@ impl ParenExprBuilder {
             Token::Cdr => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a cdr expression takes 1 term, not {}.",
+                        "Program must be invalid, because a cdr expression \
+                         takes 1 term, not {}.",
                         self.terms.len()
                     )
                 }
@@ -622,15 +577,17 @@ impl ParenExprBuilder {
             Token::NullCheck => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a null check expression takes 1 term, not {}.",
+                        "Program must be invalid, because a null check expression \
+                         takes 1 term, not {}.",
                         self.terms.len()
                     )
                 }
                 let value = self.terms.pop().unwrap();
                 Ok(boxparexpr!(ParenExpression::NullCheck { value }))
             }
-            other => bail!(
-                "Something went wrong internally; can't finish a paren expression for the token {other:?}",
+            Token::RightParen => bail!(
+                "Something went wrong internally; can't finish a paren expression \
+                 that started with a right parenthesis.",
             ),
         }
     }
@@ -724,13 +681,12 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                     builder_stack.push(top_expr);
                     // --------------------
                     continue;
-                } else {
-                    bail!(
-                        "The program must be invalid, because a
-    {token:?} was seen when a
-    {term_symb:?} was expected."
-                    )
                 }
+                bail!(
+                    "The program must be invalid, because a
+                {token:?} was seen when a
+                {term_symb:?} was expected."
+                )
             }
 
             StackSymbol::NonTerminal(nonterm_symb) => {
@@ -739,10 +695,7 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                 {
                     // --- Building AST ---
                     match nonterm_symb {
-                        NonTerminal::Expression => {
-                            builder_stack.push(Builder::Expr(ExprBuilder::new()));
-                        }
-                        NonTerminal::Expressions => {
+                        NonTerminal::Expression | NonTerminal::Expressions => {
                             builder_stack.push(Builder::Expr(ExprBuilder::new()));
                         }
                         NonTerminal::ParenExpression => {
