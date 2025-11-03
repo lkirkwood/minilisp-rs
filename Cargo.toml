@@ -1,11 +1,13 @@
 [package]
-name = "minilisp-rs"
+name = "minilisp"
 version = "0.1.0"
 edition = "2024"
+authors = ["Linus Kirkwood <linuskirkwood@gmail.com>"]
+license = "LGPL-3.0-only"
 
 [dependencies]
 anyhow = "1.0"
-lazy_static = "1.5.0"
+lazy_static = "1.5"
 
 [profile.dist]
 inherits = "release"
