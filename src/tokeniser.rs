@@ -23,6 +23,8 @@ pub enum Token {
     LogicalAnd,
     LogicalOr,
     LogicalNot,
+    Match,
+    Wildcard,
 }
 
 enum BufferedType {
@@ -66,7 +68,7 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
                 buf_type = Some(BufferedType::Number);
                 char_buf.push(character);
             }
-            'a'..='z' | '-' | '_' => {
+            'a'..='z' | '-' => {
                 if let Some(BufferedType::Number) = buf_type {
                     bail!(
                         "Identifier-class character in token that started as a number: {character}"
@@ -100,6 +102,8 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '∧' => tokens.push(Token::LogicalAnd),
             '∨' => tokens.push(Token::LogicalOr),
             '¬' => tokens.push(Token::LogicalNot),
+            '⊢' => tokens.push(Token::Match),
+            '_' => tokens.push(Token::Wildcard),
             _ => bail!("Unexpected character: {character}"),
         }
     }
