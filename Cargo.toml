@@ -1,7 +1,13 @@
 [package]
 name = "minilisp-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
+lazy_static = "1.5.0"
+
+[profile.dist]
+inherits = "release"
+lto = true
+codegen-units = 1

@@ -1,6 +1,24 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
-use crate::model::Token;
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Token {
+    LeftParen,
+    RightParen,
+    Number(usize),
+    Identifier(String),
+    Plus,
+    Minus,
+    Times,
+    Equals,
+    Condition,
+    Lambda,
+    Binding,
+    Cons,
+    Car,
+    Cdr,
+    NullCheck,
+    Null,
+}
 
 enum BufferedType {
     Number,
@@ -36,7 +54,6 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
 
     for character in program_string.chars() {
         match character {
-            '(' => tokens.push(Token::LeftParen),
             '0'..='9' => {
                 if let Some(BufferedType::Identifier) = buf_type {
                     bail!("Numeric character in token that started as an identifier: {character}")
@@ -60,6 +77,7 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             ' ' | '\t' | '\n' => {
                 flush_char_buf(&mut buf_type, &mut char_buf, &mut tokens);
             }
+            '(' => tokens.push(Token::LeftParen),
             '+' => tokens.push(Token::Plus),
             '−' => tokens.push(Token::Minus),
             '×' => tokens.push(Token::Times),
@@ -67,6 +85,11 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '?' => tokens.push(Token::Condition),
             'λ' => tokens.push(Token::Lambda),
             '≜' => tokens.push(Token::Binding),
+            '∅' => tokens.push(Token::Null),
+            '∷' => tokens.push(Token::Cons),
+            '←' => tokens.push(Token::Car),
+            '→' => tokens.push(Token::Cdr),
+            '∘' => tokens.push(Token::NullCheck),
             _ => bail!("Unexpected character: {character}"),
         }
     }
@@ -79,6 +102,11 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tokenise_number() {
+        assert_eq!(tokenise("42").unwrap(), vec![Token::Number(42)]);
+    }
 
     #[test]
     fn tokenise_addition() {
@@ -119,24 +147,20 @@ mod tests {
     #[test]
     fn tokenise_binding() {
         assert_eq!(
-            tokenise("(≜ myident (× 42 100))").unwrap(),
+            tokenise("(≜ x 10 (+ x x)) ").unwrap(),
             vec![
                 Token::LeftParen,
                 Token::Binding,
-                Token::Identifier("myident".to_string()),
+                Token::Identifier("x".to_string()),
+                Token::Number(10),
                 Token::LeftParen,
-                Token::Times,
-                Token::Number(42),
-                Token::Number(100),
+                Token::Plus,
+                Token::Identifier("x".to_string()),
+                Token::Identifier("x".to_string()),
                 Token::RightParen,
                 Token::RightParen,
             ]
         );
-    }
-
-    #[test]
-    fn tokenise_number() {
-        assert_eq!(tokenise("42").unwrap(), vec![Token::Number(42)]);
     }
 
     #[test]

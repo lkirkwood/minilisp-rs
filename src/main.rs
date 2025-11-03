@@ -1,6 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
-mod model;
+mod interpreter;
+mod parser;
 mod tokeniser;
 
 fn main() -> Result<()> {
@@ -10,8 +11,16 @@ fn main() -> Result<()> {
         Some(path) => match std::fs::read_to_string(&path) {
             Ok(program_string) => {
                 let tokens = tokeniser::tokenise(&program_string)?;
-                dbg!(tokens);
+                dbg!(&tokens);
                 println!("Tokenised OK!");
+
+                let expression = parser::parse(tokens)?;
+                dbg!(&expression);
+                println!("Parsed OK!");
+
+                let result = interpreter::interpret(expression)?;
+                dbg!(result);
+                println!("Intepreted OK!");
             }
             Err(err) => bail!("Failed to read program at {path}: {err}"),
         },
