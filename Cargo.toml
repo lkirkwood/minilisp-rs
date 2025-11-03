@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Linus Kirkwood <linuskirkwood@gmail.com>"]
 license = "LGPL-3.0-only"
+readme = "README.org"
 
 [dependencies]
 anyhow = "1.0"
