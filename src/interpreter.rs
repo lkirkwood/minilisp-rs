@@ -301,4 +301,16 @@ mod tests {
     fn parse_logic_4() {
         assert_eq!(interpret_str("(∧ 0 (∨ 1 (¬ 1)))"), Value::Number(0));
     }
+
+    #[test]
+    fn interpret_lists() {
+        assert_eq!(
+            interpret(
+                parse(tokenise("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))").unwrap())
+                    .unwrap()
+            )
+            .unwrap(),
+            Value::Number(1)
+        );
+    }
 }
