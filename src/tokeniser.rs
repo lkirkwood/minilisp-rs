@@ -219,4 +219,14 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn tokenise_invalid_ident() {
+        assert!(tokenise("(≜ lst99 (∷ 42 ∅))").is_err());
+    }
+
+    #[test]
+    fn tokenise_invalid_number() {
+        assert!(tokenise("(≜ lst (∷ 42abc ∅))").is_err());
+    }
 }
