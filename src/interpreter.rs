@@ -286,7 +286,7 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                     for pattern in patterns {
                         match recurse(Box::new(Expression::PatternClause(pattern)), idents.clone())?
                         {
-                            Value::Null => continue,
+                            Value::Null => {}
                             other => found = other,
                         }
                     }
@@ -318,7 +318,7 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
             dbg!(idents.get("_match").unwrap().matches(&pattern));
             match idents.get("_match") {
                 Some(matchval) => match matchval.matches(&pattern) {
-                    PatternMatch::None => return Ok(Value::Null),
+                    PatternMatch::None => Ok(Value::Null),
                     PatternMatch::Simple => recurse(body, idents),
                     PatternMatch::Binding(bindings) => {
                         idents.extend(bindings);

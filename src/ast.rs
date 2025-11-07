@@ -5,9 +5,9 @@ use anyhow::{Error, Result, bail};
 
 /// A boxed Expression to allow recursive type structure.
 pub type BoxExpr = Box<Expression>;
-/// A boxed ParenExpression to allow recursive type structure.
+/// A boxed `ParenExpression` to allow recursive type structure.
 pub type BoxParenExpr = Box<ParenExpression>;
-/// A boxed PatternClause to allow recursive type structure.
+/// A boxed `PatternClause` to allow recursive type structure.
 pub type BoxPattClause = Box<PatternClause>;
 /// A boxed Pattern to allow recursive type structure.
 pub type BoxPatt = Box<Pattern>;
@@ -206,7 +206,7 @@ impl ExprBuilder {
     }
 }
 
-/// A builder for ParenExpressions.
+/// A builder for `ParenExpressions`.
 #[derive(Debug)]
 pub struct ParenExprBuilder {
     token: Token,
@@ -588,7 +588,7 @@ impl ParenExprBuilder {
     }
 }
 
-/// A builder for PatternClauses.
+/// A builder for `PatternClauses`.
 #[derive(Debug)]
 pub struct PattClauseBuilder {
     pattern: Option<BoxPatt>,
