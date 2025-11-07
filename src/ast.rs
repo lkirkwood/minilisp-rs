@@ -457,8 +457,8 @@ impl ParenExprBuilder {
                         self.terms.len()
                     )
                 }
-                let car = self.terms.pop().unwrap();
                 let cdr = self.terms.pop().unwrap();
+                let car = self.terms.pop().unwrap();
                 Ok(boxparexpr!(ParenExpression::Cons { car, cdr }))
             }
             Token::Car => {
