@@ -1,5 +1,7 @@
 use anyhow::{Result, bail};
 
+#[macro_use]
+mod ast;
 mod interpreter;
 mod parser;
 mod tokeniser;
