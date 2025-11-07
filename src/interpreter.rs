@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn interpret_match_complex() {
+    fn interpret_match_complex_1() {
         assert_eq!(
             interpret_str(
                 "(≜ first-or-default
@@ -460,6 +460,59 @@ mod tests {
                     (first-or-default (∷ 42 ∅)))"
             ),
             Value::Number(42)
+        )
+    }
+
+    #[test]
+    fn interpret_match_complex_2() {
+        assert_eq!(
+            interpret_str(
+                "(≜ first-or-default
+                    (λ lst (⊢ lst
+                        (∅ 0)
+                        ((∷ _ y) y)))
+                    (first-or-default (∷ 42 ∅)))"
+            ),
+            Value::Null
+        )
+    }
+
+    #[test]
+    fn interpret_match_complex_3() {
+        assert_eq!(
+            interpret_str(
+                "(≜ first-or-default
+                    (λ lst (⊢ lst
+                        (∅ 0)
+                        ((∷ x y) (+ x y))))
+                    (first-or-default (∷ 42 1)))"
+            ),
+            Value::Number(43)
+        )
+    }
+
+    #[test]
+    fn interpret_match_deep_nest() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ (∷ 42 (∷ 43 (∷ 44 (∷ 45 ∅))))
+                    (∅ 0)
+                    ((∷ a (∷ b (∷ c (∷ d ∅)))) c))"
+            ),
+            Value::Number(44)
+        )
+    }
+
+    #[test]
+    fn interpret_match_first_non_null() {
+        // TODO decide if this behaviour is ok
+        assert_eq!(
+            interpret_str(
+                "(⊢ 42
+                    (42 ∅)
+                    (_ 1))"
+            ),
+            Value::Number(1)
         )
     }
 }
