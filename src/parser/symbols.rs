@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::LazyLock};
 
 /// Terminal stack symbols - just the tags from the Token tagged union.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum Terminal {
+pub enum Terminal {
     LeftParen,
     RightParen,
     Number,
@@ -67,7 +67,6 @@ pub enum NonTerminal {
     ParenExpression,
     PatternClause,
     PatternClauses,
-    Pattern,
     Epsilon,
     End,
 }
@@ -273,20 +272,10 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             ),
             // pattern clause -> pattern
             (
-                (Terminal::LeftParen, NonTerminal::Pattern),
+                (Terminal::LeftParen, NonTerminal::PatternClause),
                 vec![
                     term!(LeftParen),
-                    nonterm!(Pattern),
                     nonterm!(Expression),
-                    term!(RightParen),
-                ],
-            ),
-            // pattern clause -> pattern
-            (
-                (Terminal::LeftParen, NonTerminal::Pattern),
-                vec![
-                    term!(LeftParen),
-                    nonterm!(Pattern),
                     nonterm!(Expression),
                     term!(RightParen),
                 ],
@@ -300,34 +289,6 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             (
                 (Terminal::RightParen, NonTerminal::PatternClauses),
                 vec![nonterm!(Epsilon)],
-            ),
-            // pattern -> number
-            (
-                (Terminal::Number, NonTerminal::Pattern),
-                vec![term!(Number)],
-            ),
-            // pattern -> identifier
-            (
-                (Terminal::Identifier, NonTerminal::Pattern),
-                vec![term!(Identifier)],
-            ),
-            // pattern -> wildcard
-            (
-                (Terminal::Wildcard, NonTerminal::Pattern),
-                vec![term!(Wildcard)],
-            ),
-            // pattern -> null
-            ((Terminal::Null, NonTerminal::Pattern), vec![term!(Null)]),
-            // pattern -> cons
-            (
-                (Terminal::LeftParen, NonTerminal::Pattern),
-                vec![
-                    term!(LeftParen),
-                    term!(Cons),
-                    nonterm!(Pattern),
-                    nonterm!(Pattern),
-                    term!(RightParen),
-                ],
             ),
         ])
     });

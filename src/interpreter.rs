@@ -54,7 +54,6 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 )
             }
         }
-        Expression::Wildcard => todo!("Interpret wildcard expr"),
         Expression::Paren(parexpr) => {
             match *parexpr {
                 ParenExpression::Plus { first, second } => {
@@ -240,6 +239,8 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 }
             }
         }
+        Expression::PatternClause(patt_clause) => todo!("Interpret pattern clause"),
+        Expression::Wildcard => todo!("Interpret wildcard expr"),
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::tokeniser::Token;
-use anyhow::{Result, bail};
+use anyhow::{Error, Result, bail};
 
 // AST NODES
 
@@ -19,6 +19,7 @@ pub enum Expression {
     Paren(BoxParenExpr),
     Null,
     Wildcard,
+    PatternClause(BoxPattClause),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -105,8 +106,36 @@ pub enum Pattern {
     Number(usize),
     Identifier(String),
     Null,
-    Wilcard,
+    Wildcard,
     Cons((BoxPatt, BoxPatt)),
+}
+
+impl TryFrom<BoxExpr> for BoxPatt {
+    type Error = Error;
+
+    fn try_from(value: BoxExpr) -> std::result::Result<Self, Self::Error> {
+        Ok(Box::new(match *value {
+            Expression::Number(num) => Pattern::Number(num),
+            Expression::Identifier(ident) => Pattern::Identifier(ident),
+            Expression::Null => Pattern::Null,
+            Expression::Wildcard => Pattern::Wildcard,
+            Expression::Paren(parexpr) => {
+                if let ParenExpression::Cons { car, cdr } = *parexpr {
+                    Pattern::Cons((car.try_into()?, cdr.try_into()?))
+                } else {
+                    bail!(
+                        "The program must be invalid, because {parexpr:?} is not a valid pattern."
+                    )
+                }
+            }
+            Expression::PatternClause(patt_clause) => bail!(
+                "The program must be invalid, because it looks like there is an entire pattern clause \
+                (the tuple `(pattern, expression)`) where just a pattern was expected. Check your brackets. \
+                The clause found was:
+    {patt_clause:?}"
+            ),
+        }))
+    }
 }
 
 // NODE BUILDERS
@@ -187,6 +216,20 @@ impl ParenExprBuilder {
                 self.terms.push(expr);
                 self.terms_finished = true;
             }
+            Token::Match => {
+                if self.terms.is_empty() {
+                    self.terms.push(expr);
+                } else if let Expression::PatternClause(_) = *expr {
+                    self.terms.push(expr);
+                    self.terms_finished = true;
+                } else {
+                    bail!(
+                        "The program must be invalid, because a match statement can only contain \
+                           a value to match and a sequence of pattern clauses, not:
+    {expr:?}"
+                    )
+                }
+            }
             Token::Plus
             | Token::Minus
             | Token::Times
@@ -245,6 +288,10 @@ impl ParenExprBuilder {
                 "Something went wrong internally; can't build a paren expression \
                  that started with a right parenthesis.",
             ),
+            Token::Wildcard => bail!(
+                "Something went wrong internally; can't build a paren expression \
+                 that started with a wildcard.",
+            ),
         }
 
         Ok(())
@@ -260,6 +307,28 @@ impl ParenExprBuilder {
             Token::LeftParen => Ok(boxparexpr!(ParenExpression::Exprs {
                 exprs: self.terms.clone()
             })),
+            Token::Match => {
+                if self.terms.len() < 2 {
+                    bail!(
+                        "Something went wrong internally; can't finish a match expression \
+                         with less than two terms."
+                    )
+                }
+                let mut term_iter = self.terms.iter();
+                let value = term_iter.next().unwrap().to_owned();
+                let mut patterns = Vec::new();
+                for expr in term_iter {
+                    if let Expression::PatternClause(ref clause) = **expr {
+                        patterns.push(clause.to_owned());
+                    } else {
+                        bail!(
+                            "Something went wrong internally; can't use a {expr:?} as a pattern clause."
+                        )
+                    }
+                }
+                Ok(boxparexpr!(ParenExpression::Match { value, patterns }))
+            }
+
             Token::Number(num) => {
                 let mut exprs = vec![Box::new(Expression::Number(*num))];
                 exprs.extend(self.terms.clone());
@@ -484,9 +553,9 @@ impl ParenExprBuilder {
                 let value = self.terms.pop().unwrap();
                 Ok(boxparexpr!(ParenExpression::LogicalNot { value }))
             }
-            Token::RightParen => bail!(
+            Token::RightParen | Token::Wildcard => bail!(
                 "Something went wrong internally; can't finish a paren expression \
-                 that started with a right parenthesis.",
+                 that started with a right parenthesis or a wildcard.",
             ),
         }
     }
@@ -503,8 +572,49 @@ impl ParenExprBuilder {
 /// A builder for PatternClauses.
 #[derive(Debug)]
 pub struct PattClauseBuilder {
-    pattern: Option<Pattern>,
+    pattern: Option<BoxPatt>,
     body: Option<BoxExpr>,
+    finished: bool,
+}
+
+impl PattClauseBuilder {
+    pub fn new() -> Self {
+        Self {
+            pattern: None,
+            body: None,
+            finished: false,
+        }
+    }
+
+    fn take(&mut self, expr: BoxExpr) -> Result<()> {
+        if self.pattern.is_none() {
+            self.pattern = Some(expr.try_into()?);
+        } else if self.body.is_none() {
+            self.body = Some(expr);
+            self.finished = true;
+        } else {
+            bail!("Something went wrong internally; can't add terms to a finished pattern clause.")
+        }
+
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<BoxExpr> {
+        if !self.finished {
+            bail!("Something went wrong internally; can't finish an unfinished pattern clause.")
+        }
+
+        Ok(Box::new(Expression::PatternClause(Box::new(
+            PatternClause {
+                pattern: self.pattern.clone().unwrap(),
+                body: self.body.clone().unwrap(),
+            },
+        ))))
+    }
+
+    fn finished(&self) -> bool {
+        self.finished
+    }
 }
 
 pub enum Buildable {
@@ -519,7 +629,6 @@ pub enum Builder {
     Expr(ExprBuilder),
     Paren(ParenExprBuilder),
     PatternClause(PattClauseBuilder),
-    Pattern(PattBuilder),
 }
 
 /// Generic interface for building a composite form.
@@ -529,6 +638,7 @@ impl Builder {
         match self {
             Self::Expr(expr_builder) => expr_builder.take(expr),
             Self::Paren(parexpr_builder) => parexpr_builder.take(expr),
+            Self::PatternClause(pattclause_builder) => pattclause_builder.take(expr),
         }
     }
 
@@ -537,6 +647,7 @@ impl Builder {
         match self {
             Self::Expr(expr_builder) => expr_builder.finish(),
             Self::Paren(parexpr_builder) => parexpr_builder.finish(),
+            Self::PatternClause(pattclause_builder) => pattclause_builder.finish(),
         }
     }
 
@@ -545,6 +656,7 @@ impl Builder {
         match self {
             Self::Expr(expr_builder) => expr_builder.finished(),
             Self::Paren(parexpr_builder) => parexpr_builder.finished(),
+            Self::PatternClause(pattclause_builder) => pattclause_builder.finished(),
         }
     }
 }

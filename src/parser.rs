@@ -2,7 +2,10 @@ use anyhow::{Result, bail};
 
 // use crate::ast::;
 use crate::{
-    ast::{BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder},
+    ast::{
+        BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder, PattClauseBuilder,
+        PatternClause,
+    },
     tokeniser::Token,
 };
 
@@ -85,7 +88,9 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         NonTerminal::Epsilon => bail!(
                             "Something went wrong internally; found transition for the epsilon symbol!"
                         ),
-                        NonTerminal::PatternClause => todo!(""),
+                        NonTerminal::PatternClause | NonTerminal::PatternClauses => {
+                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()))
+                        }
                     }
                     // --------------------
 
