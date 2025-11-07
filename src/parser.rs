@@ -2,10 +2,7 @@ use anyhow::{Result, bail};
 
 // use crate::ast::;
 use crate::{
-    ast::{
-        BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder, PattClauseBuilder,
-        PatternClause,
-    },
+    ast::{BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder, PattClauseBuilder},
     tokeniser::Token,
 };
 
@@ -254,6 +251,38 @@ mod tests {
                     first: Box::new(Expression::Number(0)),
                     second: boxparexpr!(ParenExpression::LogicalNot {
                         value: Box::new(Expression::Number(0))
+                    })
+                })
+            })
+        );
+    }
+
+    #[test]
+    fn parse_lists() {
+        assert_eq!(
+            parse(tokenise("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))").unwrap())
+                .unwrap(),
+            boxparexpr!(ParenExpression::Binding {
+                name: "lst".to_string(),
+                value: boxparexpr!(ParenExpression::Cons {
+                    car: Box::new(Expression::Number(42)),
+                    cdr: boxparexpr!(ParenExpression::Cons {
+                        car: Box::new(Expression::Number(99)),
+                        cdr: Box::new(Expression::Null)
+                    })
+                }),
+                body: boxparexpr!(ParenExpression::LogicalOr {
+                    first: boxparexpr!(ParenExpression::NullCheck {
+                        value: boxparexpr!(ParenExpression::Car {
+                            cons: Box::new(Expression::Identifier("lst".to_string()))
+                        })
+                    }),
+                    second: boxparexpr!(ParenExpression::NullCheck {
+                        value: boxparexpr!(ParenExpression::Cdr {
+                            cons: boxparexpr!(ParenExpression::Cdr {
+                                cons: Box::new(Expression::Identifier("lst".to_string()))
+                            })
+                        })
                     })
                 })
             })

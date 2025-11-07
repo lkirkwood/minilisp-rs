@@ -286,32 +286,40 @@ mod tests {
     }
 
     #[test]
-    fn parse_less_than() {
+    fn interpret_less_than() {
         assert_eq!(interpret_str("(≜ x 10 (‹ x (+ x 1)))"), Value::Number(1));
     }
 
     #[test]
-    fn parse_greater_than() {
+    fn interpret_greater_than() {
         assert_eq!(interpret_str("(≜ x 10 (› x (+ x 1)))"), Value::Number(0));
     }
 
     #[test]
-    fn parse_logic_1() {
+    fn interpret_logic_1() {
         assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 0)))"), Value::Number(1));
     }
 
     #[test]
-    fn parse_logic_2() {
+    fn interpret_logic_2() {
         assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 1)))"), Value::Number(0));
     }
 
     #[test]
-    fn parse_logic_3() {
+    fn interpret_logic_3() {
         assert_eq!(interpret_str("(∧ 1 (∨ 1 (¬ 1)))"), Value::Number(1));
     }
 
     #[test]
-    fn parse_logic_4() {
+    fn interpret_logic_4() {
         assert_eq!(interpret_str("(∧ 0 (∨ 1 (¬ 1)))"), Value::Number(0));
+    }
+
+    #[test]
+    fn interpret_lists() {
+        assert_eq!(
+            interpret_str("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))"),
+            Value::Number(1)
+        );
     }
 }

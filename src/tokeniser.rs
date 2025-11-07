@@ -181,4 +181,56 @@ mod tests {
     fn tokenise_invalid_char() {
         assert!(tokenise("(⌒)").is_err());
     }
+
+    #[test]
+    fn tokenise_lists() {
+        assert_eq!(
+            tokenise("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))").unwrap(),
+            vec![
+                Token::LeftParen,
+                Token::Binding,
+                Token::Identifier("lst".to_string()),
+                Token::LeftParen,
+                Token::Cons,
+                Token::Number(42),
+                Token::LeftParen,
+                Token::Cons,
+                Token::Number(99),
+                Token::Null,
+                Token::RightParen,
+                Token::RightParen,
+                Token::LeftParen,
+                Token::LogicalOr,
+                Token::LeftParen,
+                Token::NullCheck,
+                Token::LeftParen,
+                Token::Car,
+                Token::Identifier("lst".to_string()),
+                Token::RightParen,
+                Token::RightParen,
+                Token::LeftParen,
+                Token::NullCheck,
+                Token::LeftParen,
+                Token::Cdr,
+                Token::LeftParen,
+                Token::Cdr,
+                Token::Identifier("lst".to_string()),
+                Token::RightParen,
+                Token::RightParen,
+                Token::RightParen,
+                Token::RightParen,
+                Token::RightParen,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenise_invalid_ident() {
+        assert!(tokenise("(≜ lst99 (∷ 42 ∅))").is_err());
+    }
+
+    #[test]
+    fn tokenise_invalid_number() {
+        assert!(tokenise("(≜ lst (∷ 42abc ∅))").is_err());
+    }
 }
