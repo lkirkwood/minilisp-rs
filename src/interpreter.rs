@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Result, bail};
 
-use crate::ast::{BoxExpr, Expression, ParenExpression};
+use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern, PatternClause};
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -33,6 +33,66 @@ pub enum Value {
     Number(usize),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
+}
+
+#[derive(Debug)]
+enum PatternMatch {
+    None,
+    Simple,
+    Binding(HashMap<String, Value>),
+}
+
+impl Value {
+    /// Returns a
+    fn matches(&self, pattern: &Pattern) -> PatternMatch {
+        match pattern {
+            Pattern::Wildcard => PatternMatch::Simple,
+            Pattern::Identifier(ident) => {
+                PatternMatch::Binding(HashMap::from([(ident.clone(), self.clone())]))
+            }
+            Pattern::Null => {
+                if *self == Value::Null {
+                    PatternMatch::Simple
+                } else {
+                    PatternMatch::None
+                }
+            }
+            Pattern::Number(their_num) => {
+                if let Self::Number(our_num) = self
+                    && our_num == their_num
+                {
+                    PatternMatch::Simple
+                } else {
+                    PatternMatch::None
+                }
+            }
+            Pattern::Cons((pattern0, pattern1)) => {
+                if let Value::Cons((value0, value1)) = self {
+                    let mut bindings = HashMap::new();
+
+                    match value0.matches(pattern0) {
+                        PatternMatch::Binding(bindings0) => bindings.extend(bindings0),
+                        PatternMatch::Simple => {}
+                        PatternMatch::None => return PatternMatch::None,
+                    }
+
+                    match value1.matches(pattern1) {
+                        PatternMatch::Binding(bindings1) => bindings.extend(bindings1),
+                        PatternMatch::Simple => {}
+                        PatternMatch::None => return PatternMatch::None,
+                    }
+
+                    if bindings.is_empty() {
+                        PatternMatch::Simple
+                    } else {
+                        PatternMatch::Binding(bindings)
+                    }
+                } else {
+                    PatternMatch::None
+                }
+            }
+        }
+    }
 }
 
 pub fn interpret(expr: BoxExpr) -> Result<Value> {
@@ -220,8 +280,20 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                         )
                     }
                 }
-                ParenExpression::Match { value, patterns } => todo!("interpret match statement"),
+                ParenExpression::Match { value, patterns } => {
+                    idents.insert("_match".to_string(), recurse(value, idents.clone())?); // Underscores are reserved characters
+                    let mut found = Value::Null;
+                    for pattern in patterns {
+                        match recurse(Box::new(Expression::PatternClause(pattern)), idents.clone())?
+                        {
+                            Value::Null => continue,
+                            other => found = other,
+                        }
+                    }
+                    Ok(found)
+                }
                 ParenExpression::Exprs { exprs } => {
+                    dbg!(&exprs);
                     let mut expr_iter = exprs.into_iter();
                     // TODO decide if variadic forms are even needed - lambdas only take one arg!
                     if let Some(first_expr) = expr_iter.next()
@@ -239,8 +311,30 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 }
             }
         }
-        Expression::PatternClause(patt_clause) => todo!("Interpret pattern clause"),
-        Expression::Wildcard => todo!("Interpret wildcard expr"),
+        Expression::PatternClause(patt_clause) => {
+            let PatternClause { pattern, body } = *patt_clause;
+            dbg!(&pattern);
+            dbg!(idents.get("_match").unwrap());
+            dbg!(idents.get("_match").unwrap().matches(&pattern));
+            match idents.get("_match") {
+                Some(matchval) => match matchval.matches(&pattern) {
+                    PatternMatch::None => return Ok(Value::Null),
+                    PatternMatch::Simple => recurse(body, idents),
+                    PatternMatch::Binding(bindings) => {
+                        idents.extend(bindings);
+                        recurse(body, idents)
+                    }
+                },
+                None => bail!(
+                    "Something went wrong internally; matching a pattern clause \
+                    without any _match ident."
+                ),
+            }
+        }
+        Expression::Wildcard => bail!(
+            "The program must be invalid, because a wildcard character \
+            `_` can only be present as a pattern in a match statement."
+        ),
     }
 }
 
@@ -276,8 +370,16 @@ mod tests {
     }
 
     #[test]
-    fn interpret_lambda() {
+    fn interpret_lambda_immediate() {
         assert_eq!(interpret_str("((λ x (+ x 1)) 5)"), Value::Number(6))
+    }
+
+    #[test]
+    fn interpret_lambda_bound() {
+        assert_eq!(
+            interpret_str("(≜ add-one (λ x (+ x 1)) (add-one 5))"),
+            Value::Number(6)
+        )
     }
 
     #[test]
@@ -321,5 +423,43 @@ mod tests {
             interpret_str("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))"),
             Value::Number(1)
         );
+    }
+
+    #[test]
+    fn interpret_match() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ 42
+                    (42 1)
+                    (99 0))"
+            ),
+            Value::Number(1)
+        )
+    }
+
+    #[test]
+    fn interpret_match_cons() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ (∷ 42 99)
+                    (∅ 0)
+                    ((∷ x _) x))"
+            ),
+            Value::Number(42)
+        )
+    }
+
+    #[test]
+    fn interpret_match_complex() {
+        assert_eq!(
+            interpret_str(
+                "(≜ first-or-default
+                    (λ lst (⊢ lst
+                        (∅ 0)
+                        ((∷ x _) x)))
+                    (first-or-default (∷ 42 ∅)))"
+            ),
+            Value::Number(42)
+        )
     }
 }

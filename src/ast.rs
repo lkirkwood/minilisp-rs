@@ -22,6 +22,39 @@ pub enum Expression {
     PatternClause(BoxPattClause),
 }
 
+impl TryFrom<Token> for BoxExpr {
+    type Error = Error;
+    fn try_from(value: Token) -> std::result::Result<Self, Self::Error> {
+        match value {
+            Token::Number(num) => Ok(Box::new(Expression::Number(num))),
+            Token::Identifier(ident) => Ok(Box::new(Expression::Identifier(ident))),
+            Token::Null => Ok(Box::new(Expression::Null)),
+            Token::Wildcard => Ok(Box::new(Expression::Wildcard)),
+            Token::LeftParen
+            | Token::RightParen
+            | Token::Plus
+            | Token::Minus
+            | Token::Times
+            | Token::Equals
+            | Token::Condition
+            | Token::Lambda
+            | Token::Binding
+            | Token::Cons
+            | Token::Car
+            | Token::Cdr
+            | Token::NullCheck
+            | Token::LessThan
+            | Token::GreaterThan
+            | Token::LogicalAnd
+            | Token::LogicalOr
+            | Token::LogicalNot
+            | Token::Match => {
+                bail!("Not a token that can be converted to an expression directly: {value:?}")
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParenExpression {
     Plus {
@@ -132,7 +165,7 @@ impl TryFrom<BoxExpr> for BoxPatt {
                 "The program must be invalid, because it looks like there is an entire pattern clause \
                 (the tuple `(pattern, expression)`) where just a pattern was expected. Check your brackets. \
                 The clause found was:
-    {patt_clause:?}"
+    {patt_clause:#?}"
             ),
         }))
     }
@@ -304,9 +337,11 @@ impl ParenExprBuilder {
         }
 
         match &self.token {
-            Token::LeftParen => Ok(boxparexpr!(ParenExpression::Exprs {
-                exprs: self.terms.clone()
-            })),
+            Token::LeftParen | Token::Identifier(_) | Token::Number(_) | Token::Null => {
+                Ok(boxparexpr!(ParenExpression::Exprs {
+                    exprs: self.terms.clone()
+                }))
+            }
             Token::Match => {
                 if self.terms.len() < 2 {
                     bail!(
@@ -327,22 +362,6 @@ impl ParenExprBuilder {
                     }
                 }
                 Ok(boxparexpr!(ParenExpression::Match { value, patterns }))
-            }
-
-            Token::Number(num) => {
-                let mut exprs = vec![Box::new(Expression::Number(*num))];
-                exprs.extend(self.terms.clone());
-                Ok(boxparexpr!(ParenExpression::Exprs { exprs }))
-            }
-            Token::Identifier(ident) => {
-                let mut exprs = vec![Box::new(Expression::Identifier(ident.clone()))];
-                exprs.extend(self.terms.clone());
-                Ok(boxparexpr!(ParenExpression::Exprs { exprs }))
-            }
-            Token::Null => {
-                let mut exprs = vec![Box::new(Expression::Null)];
-                exprs.extend(self.terms.clone());
-                Ok(boxparexpr!(ParenExpression::Exprs { exprs }))
             }
             Token::Plus => {
                 if self.terms.len() != 2 {
@@ -574,7 +593,7 @@ impl ParenExprBuilder {
 pub struct PattClauseBuilder {
     pattern: Option<BoxPatt>,
     body: Option<BoxExpr>,
-    finished: bool,
+    paren_closed: bool,
 }
 
 impl PattClauseBuilder {
@@ -582,16 +601,15 @@ impl PattClauseBuilder {
         Self {
             pattern: None,
             body: None,
-            finished: false,
+            paren_closed: false,
         }
     }
 
-    fn take(&mut self, expr: BoxExpr) -> Result<()> {
+    pub fn take(&mut self, expr: BoxExpr) -> Result<()> {
         if self.pattern.is_none() {
             self.pattern = Some(expr.try_into()?);
         } else if self.body.is_none() {
             self.body = Some(expr);
-            self.finished = true;
         } else {
             bail!("Something went wrong internally; can't add terms to a finished pattern clause.")
         }
@@ -599,8 +617,8 @@ impl PattClauseBuilder {
         Ok(())
     }
 
-    fn finish(&mut self) -> Result<BoxExpr> {
-        if !self.finished {
+    pub fn finish(&mut self) -> Result<BoxExpr> {
+        if !self.finished() {
             bail!("Something went wrong internally; can't finish an unfinished pattern clause.")
         }
 
@@ -612,8 +630,12 @@ impl PattClauseBuilder {
         ))))
     }
 
-    fn finished(&self) -> bool {
-        self.finished
+    pub fn close_paren(&mut self) {
+        self.paren_closed = true;
+    }
+
+    pub fn finished(&self) -> bool {
+        self.pattern.is_some() && self.body.is_some() && self.paren_closed
     }
 }
 

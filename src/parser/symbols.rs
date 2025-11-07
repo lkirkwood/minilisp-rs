@@ -65,7 +65,6 @@ pub enum NonTerminal {
     Expression,
     Expressions,
     ParenExpression,
-    PatternClause,
     PatternClauses,
     Epsilon,
     End,
@@ -108,6 +107,11 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             ),
             // expression -> null
             ((Terminal::Null, NonTerminal::Expression), vec![term!(Null)]),
+            // expression -> wildcard
+            (
+                (Terminal::Wildcard, NonTerminal::Expression),
+                vec![term!(Wildcard)],
+            ),
             // expression -> paren expression
             (
                 (Terminal::LeftParen, NonTerminal::Expression),
@@ -131,6 +135,11 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             (
                 (Terminal::Null, NonTerminal::Expressions),
                 vec![term!(Null), nonterm!(Expressions)],
+            ),
+            // expressions -> wildcard
+            (
+                (Terminal::Wildcard, NonTerminal::Expressions),
+                vec![term!(Wildcard), nonterm!(Expressions)],
             ),
             // expressions -> paren expression
             (
@@ -263,27 +272,18 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             // paren expression -> match
             (
                 (Terminal::Match, NonTerminal::ParenExpression),
-                vec![
-                    term!(Match),
-                    nonterm!(Expression),
-                    nonterm!(PatternClause),
-                    nonterm!(PatternClauses),
-                ],
+                vec![term!(Match), nonterm!(Expression), nonterm!(PatternClauses)],
             ),
-            // pattern clause -> pattern
+            // pattern clauses -> pattern
             (
-                (Terminal::LeftParen, NonTerminal::PatternClause),
+                (Terminal::LeftParen, NonTerminal::PatternClauses),
                 vec![
                     term!(LeftParen),
                     nonterm!(Expression),
                     nonterm!(Expression),
                     term!(RightParen),
+                    nonterm!(PatternClauses),
                 ],
-            ),
-            // pattern clauses -> pattern clause
-            (
-                (Terminal::LeftParen, NonTerminal::PatternClauses),
-                vec![nonterm!(PatternClause), nonterm!(PatternClauses)],
             ),
             // pattern clauses -> pattern clause
             (

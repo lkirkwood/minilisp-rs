@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 
 // use crate::ast::;
 use crate::{
-    ast::{BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder, PattClauseBuilder},
+    ast::{BoxExpr, Builder, ExprBuilder, ParenExprBuilder, PattClauseBuilder},
     tokeniser::Token,
 };
 
@@ -31,18 +31,17 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                             "Something went wrong internally; the expression builder stack is empty."
                         )
                     }
-
                     let mut top_expr = builder_stack.pop().unwrap();
-                    if let Token::Identifier(ident) = token {
-                        top_expr.take(Box::new(Expression::Identifier(ident)))?;
-                    } else if let Token::Number(num) = token {
-                        top_expr.take(Box::new(Expression::Number(num)))?;
-                    } else if Token::Null == token {
-                        top_expr.take(Box::new(Expression::Null))?;
+                    if let Ok(token_expr) = token.clone().try_into() {
+                        top_expr.take(token_expr)?;
                     } else if let Builder::Paren(ref mut parexpr_builder) = top_expr
                         && Token::RightParen == token
                     {
                         parexpr_builder.close_paren();
+                    } else if let Builder::PatternClause(ref mut pattclause_builder) = top_expr
+                        && Token::RightParen == token
+                    {
+                        pattclause_builder.close_paren();
                     }
 
                     while top_expr.finished() {
@@ -85,8 +84,8 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         NonTerminal::Epsilon => bail!(
                             "Something went wrong internally; found transition for the epsilon symbol!"
                         ),
-                        NonTerminal::PatternClause | NonTerminal::PatternClauses => {
-                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()))
+                        NonTerminal::PatternClauses => {
+                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()));
                         }
                     }
                     // --------------------
@@ -114,22 +113,25 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
             bail!(
                 "Something went wrong internally; the program was recognised, but the AST wasn't finished.
     The expression builder stack looks like:
-    {builder_stack:?}"
+    {builder_stack:#?}"
             )
         }
     } else {
         bail!(
             "The program must be invalid, because the input token stack was
-    {tokens:?}
+    {tokens:#?}
 and the symbol stack was
-    {symbols:?}"
+    {symbols:#?}"
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{ast::ParenExpression, tokeniser::tokenise};
+    use crate::{
+        ast::{Expression, ParenExpression, Pattern, PatternClause},
+        tokeniser::tokenise,
+    };
 
     use super::*;
 
@@ -185,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_lambda() {
+    fn parse_lambda_immediate() {
         assert_eq!(
             parse(tokenise("((λ x (+ x 1)) 5)").unwrap()).unwrap(),
             boxparexpr!(ParenExpression::Exprs {
@@ -199,6 +201,29 @@ mod tests {
                     }),
                     Box::new(Expression::Number(5))
                 ]
+            })
+        )
+    }
+
+    #[test]
+    fn parse_lambda_bound() {
+        assert_eq!(
+            parse(tokenise("(≜ add-one (λ x (+ x 1)) (add-one 5))").unwrap()).unwrap(),
+            boxparexpr!(ParenExpression::Binding {
+                name: "add-one".to_string(),
+                value: boxparexpr!(ParenExpression::Lambda {
+                    name: "x".to_string(),
+                    body: boxparexpr!(ParenExpression::Plus {
+                        first: Box::new(Expression::Identifier("x".to_string())),
+                        second: Box::new(Expression::Number(1))
+                    })
+                }),
+                body: boxparexpr!(ParenExpression::Exprs {
+                    exprs: vec![
+                        Box::new(Expression::Identifier("add-one".to_string())),
+                        Box::new(Expression::Number(5))
+                    ]
+                })
             })
         )
     }
@@ -285,6 +310,68 @@ mod tests {
                         })
                     })
                 })
+            })
+        );
+    }
+
+    #[test]
+    fn parse_match() {
+        assert_eq!(
+            parse(
+                tokenise(
+                    "(⊢ 42
+                        (42 1)
+                        (99 0))",
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            boxparexpr!(ParenExpression::Match {
+                value: Box::new(Expression::Number(42)),
+                patterns: vec![
+                    Box::new(PatternClause {
+                        pattern: Box::new(Pattern::Number(42)),
+                        body: Box::new(Expression::Number(1))
+                    }),
+                    Box::new(PatternClause {
+                        pattern: Box::new(Pattern::Number(99)),
+                        body: Box::new(Expression::Number(0))
+                    })
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_match_cons() {
+        assert_eq!(
+            parse(
+                tokenise(
+                    "(⊢ (∷ 42 99)
+                        (∅ 0)
+                        ((∷ x _) x))",
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            boxparexpr!(ParenExpression::Match {
+                value: boxparexpr!(ParenExpression::Cons {
+                    car: Box::new(Expression::Number(42)),
+                    cdr: Box::new(Expression::Number(99))
+                }),
+                patterns: vec![
+                    Box::new(PatternClause {
+                        pattern: Box::new(Pattern::Null),
+                        body: Box::new(Expression::Number(0))
+                    }),
+                    Box::new(PatternClause {
+                        pattern: Box::new(Pattern::Cons((
+                            Box::new(Pattern::Identifier("x".to_string())),
+                            Box::new(Pattern::Wildcard)
+                        ))),
+                        body: Box::new(Expression::Identifier("x".to_string()))
+                    })
+                ]
             })
         );
     }
