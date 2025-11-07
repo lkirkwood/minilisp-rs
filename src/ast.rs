@@ -97,8 +97,8 @@ pub enum ParenExpression {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PatternClause {
-    pattern: BoxPatt,
-    body: BoxExpr,
+    pub pattern: BoxPatt,
+    pub body: BoxExpr,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
