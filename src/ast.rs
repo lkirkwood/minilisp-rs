@@ -617,13 +617,6 @@ impl PattClauseBuilder {
     }
 }
 
-pub enum Buildable {
-    Expr(BoxExpr),
-    Paren(BoxParenExpr),
-    PatternClause(BoxPattClause),
-    Pattern(BoxPatt),
-}
-
 #[derive(Debug)]
 pub enum Builder {
     Expr(ExprBuilder),
