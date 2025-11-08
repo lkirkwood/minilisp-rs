@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{Debug, Pointer},
+    fmt::{Debug, Display, Pointer},
     rc::Rc,
 };
 
@@ -33,6 +33,21 @@ pub enum Value {
     Number(usize),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Null => write!(f, "∅"),
+            Self::Number(num) => write!(f, "{num}"),
+            Self::Cons((val0, val1)) => write!(f, "({val0} {val1})"),
+            Self::Lambda(Lambda { name, func }) => {
+                write!(f, "(λ \"{name}\" - ")?;
+                func.fmt(f)?;
+                write!(f, ")")
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -293,7 +308,6 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                     Ok(found)
                 }
                 ParenExpression::Exprs { exprs } => {
-                    dbg!(&exprs);
                     let mut expr_iter = exprs.into_iter();
                     // TODO decide if variadic forms are even needed - lambdas only take one arg!
                     if let Some(first_expr) = expr_iter.next()
@@ -313,9 +327,6 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
         }
         Expression::PatternClause(patt_clause) => {
             let PatternClause { pattern, body } = *patt_clause;
-            dbg!(&pattern);
-            dbg!(idents.get("_match").unwrap());
-            dbg!(idents.get("_match").unwrap().matches(&pattern));
             match idents.get("_match") {
                 Some(matchval) => match matchval.matches(&pattern) {
                     PatternMatch::None => Ok(Value::Null),
