@@ -10,7 +10,7 @@ use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern, PatternClause};
 
 #[derive(Clone)]
 pub struct Lambda {
-    name: String,
+    arg: String,
     func: Rc<dyn Fn(HashMap<String, Value>) -> Result<Value>>,
 }
 
@@ -41,8 +41,8 @@ impl Display for Value {
             Self::Null => write!(f, "∅"),
             Self::Number(num) => write!(f, "{num}"),
             Self::Cons((val0, val1)) => write!(f, "({val0} {val1})"),
-            Self::Lambda(Lambda { name, func }) => {
-                write!(f, "(λ \"{name}\" - ")?;
+            Self::Lambda(Lambda { arg, func }) => {
+                write!(f, "(λ \"{arg}\" - ")?;
                 func.fmt(f)?;
                 write!(f, ")")
             }
@@ -192,8 +192,8 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                         ),
                     }
                 }
-                ParenExpression::Lambda { name, body } => Ok(Value::Lambda(Lambda {
-                    name: name.clone(),
+                ParenExpression::Lambda { arg, body } => Ok(Value::Lambda(Lambda {
+                    arg: arg.clone(),
                     func: Rc::new(move |idents| recurse(body.clone(), idents)),
                 })),
                 ParenExpression::Binding { name, value, body } => {

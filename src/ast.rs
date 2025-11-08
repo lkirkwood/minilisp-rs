@@ -79,7 +79,7 @@ pub enum ParenExpression {
         no: BoxExpr,
     },
     Lambda {
-        name: String,
+        arg: String,
         body: BoxExpr,
     },
     Binding {
@@ -436,10 +436,10 @@ impl ParenExprBuilder {
                     )
                 }
                 let body = self.terms.pop().unwrap();
-                let name_expr = self.terms.pop().unwrap();
+                let arg_expr = self.terms.pop().unwrap();
 
-                if let Expression::Identifier(name) = *name_expr {
-                    Ok(boxparexpr!(ParenExpression::Lambda { name, body }))
+                if let Expression::Identifier(arg) = *arg_expr {
+                    Ok(boxparexpr!(ParenExpression::Lambda { arg, body }))
                 } else {
                     bail!(
                         "Program must be invalid, because a lambdas first term \

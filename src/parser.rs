@@ -1,6 +1,5 @@
 use anyhow::{Result, bail};
 
-// use crate::ast::;
 use crate::{
     ast::{BoxExpr, Builder, ExprBuilder, ParenExprBuilder, PattClauseBuilder},
     tokeniser::Token,
@@ -193,7 +192,7 @@ mod tests {
             boxparexpr!(ParenExpression::Exprs {
                 exprs: vec![
                     boxparexpr!(ParenExpression::Lambda {
-                        name: "x".to_string(),
+                        arg: "x".to_string(),
                         body: boxparexpr!(ParenExpression::Plus {
                             first: Box::new(Expression::Identifier("x".to_string())),
                             second: Box::new(Expression::Number(1))
@@ -212,7 +211,7 @@ mod tests {
             boxparexpr!(ParenExpression::Binding {
                 name: "add-one".to_string(),
                 value: boxparexpr!(ParenExpression::Lambda {
-                    name: "x".to_string(),
+                    arg: "x".to_string(),
                     body: boxparexpr!(ParenExpression::Plus {
                         first: Box::new(Expression::Identifier("x".to_string())),
                         second: Box::new(Expression::Number(1))
