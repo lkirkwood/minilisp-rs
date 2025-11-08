@@ -7,8 +7,8 @@ mod parser;
 mod tokeniser;
 
 fn main() -> Result<()> {
-    let args = std::env::args();
-    match args.skip(1).next() {
+    let mut args = std::env::args();
+    match args.nth(1) {
         None => bail!("Path to a program required as an argument."),
         Some(path) => match std::fs::read_to_string(&path) {
             Ok(program_string) => {
