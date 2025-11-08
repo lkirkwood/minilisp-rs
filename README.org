@@ -1,3 +1,48 @@
-#+title: minilisp
+* minilisp
 
 A Rust implementation of the tiny LISP, [[https://github.com/lkirkwood/minilisp][minilisp]].
+
+** Examples
+#+begin_src
+(≜ Y
+    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+    (≜ factorial
+        (Y (λ f
+            (λ n
+                (? (= n 0)
+                    1
+                    (× n (f (− n 1)))))))
+        (factorial 5)))
+#+end_src
+
+#+begin_src
+(≜ Y
+    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+    (≜ fib
+        (Y (λ f
+            (λ n (? (= n 0)
+                0
+                (? (= n 1)
+                    1
+                    (+ (f (− n 1)) (f (− n 2))))))))
+        (fib 10)))
+#+end_src
+
+#+begin_src
+(≜ Y
+    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+    (≜ sum
+        (Y (λ f
+            (λ lst (⊢ lst
+                (∅ 0)
+                ((∷ x xs) (+ x (f xs)))))))
+        (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))
+#+end_src
+
+#+begin_src
+(≜ Y
+    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+    (≜ length
+        (Y (λ f (λ lst (? (∘ lst) 0 (+ 1 (f (→ lst)))))))
+        (length (∷ 1 (∷ 2 (∷ 3 ∅))))))
+#+end_src
