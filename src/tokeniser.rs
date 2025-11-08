@@ -61,22 +61,6 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
 
     for character in program_string.chars() {
         match character {
-            '0'..='9' => {
-                if let Some(BufferedType::Identifier) = buf_type {
-                    bail!("Numeric character in token that started as an identifier: {character}")
-                }
-                buf_type = Some(BufferedType::Number);
-                char_buf.push(character);
-            }
-            'a'..='z' | '-' => {
-                if let Some(BufferedType::Number) = buf_type {
-                    bail!(
-                        "Identifier-class character in token that started as a number: {character}"
-                    )
-                }
-                buf_type = Some(BufferedType::Identifier);
-                char_buf.push(character);
-            }
             ')' => {
                 flush_char_buf(&mut buf_type, &mut char_buf, &mut tokens);
                 tokens.push(Token::RightParen);
@@ -104,7 +88,22 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '¬' => tokens.push(Token::LogicalNot),
             '⊢' => tokens.push(Token::Match),
             '_' => tokens.push(Token::Wildcard),
-            _ => bail!("Unexpected character: {character}"),
+            '0'..='9' => {
+                if let Some(BufferedType::Identifier) = buf_type {
+                    bail!("Numeric character in token that started as an identifier: {character}")
+                }
+                buf_type = Some(BufferedType::Number);
+                char_buf.push(character);
+            }
+            _ => {
+                if let Some(BufferedType::Number) = buf_type {
+                    bail!(
+                        "Identifier-class character in token that started as a number: {character}"
+                    )
+                }
+                buf_type = Some(BufferedType::Identifier);
+                char_buf.push(character);
+            }
         }
     }
 
@@ -175,11 +174,6 @@ mod tests {
                 Token::RightParen,
             ]
         );
-    }
-
-    #[test]
-    fn tokenise_invalid_char() {
-        assert!(tokenise("(⌒)").is_err());
     }
 
     #[test]

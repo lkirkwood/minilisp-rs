@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display, Pointer},
+    fmt::{Display, Pointer},
     rc::Rc,
 };
 
@@ -11,28 +11,45 @@ use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern, PatternClause};
 #[derive(Clone)]
 pub struct Lambda {
     arg: String,
-    func: Rc<dyn Fn(HashMap<String, Value>) -> Result<Value>>,
+    func: Rc<dyn Fn(Value) -> Result<Value>>,
 }
 
-impl Debug for Lambda {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Lambda named {} with function pointer: ", self.name,)?;
-        self.func.fmt(f)
+impl Lambda {
+    fn call(self, value: Value) -> Result<Value> {
+        (self.func)(value)
     }
 }
 
-impl PartialEq for Lambda {
-    fn eq(&self, other: &Self) -> bool {
-        other.name == self.name
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub enum Value {
     Null,
     Number(usize),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
+    Application(Rc<dyn Fn() -> Result<Value>>),
+}
+
+impl Value {
+    /// Tries to interpret the value as a boolean, performing lazy evaluation if necessary.
+    fn truthy(self) -> Result<bool> {
+        match self {
+            Self::Number(num) => Ok(num > 0),
+            Self::Cons(_) => Ok(true), // TODO decide on correct behaviour here
+            Self::Null => Ok(false),
+            Self::Application(func) => (func)()?.truthy(),
+            Self::Lambda(_) => bail!(
+                "The program must be invalid, because you can't use a lambda \
+            as the predicate for a conditional."
+            ),
+        }
+    }
+
+    fn eval(mut self) -> Result<Self> {
+        while let Self::Application(func) = self {
+            self = (func)()?;
+        }
+        Ok(self)
+    }
 }
 
 impl Display for Value {
@@ -46,11 +63,14 @@ impl Display for Value {
                 func.fmt(f)?;
                 write!(f, ")")
             }
+            Self::Application(func) => {
+                write!(f, "Lambda application of function at: ")?;
+                func.fmt(f)
+            }
         }
     }
 }
 
-#[derive(Debug)]
 enum PatternMatch {
     None,
     Simple,
@@ -66,7 +86,7 @@ impl Value {
                 PatternMatch::Binding(HashMap::from([(ident.clone(), self.clone())]))
             }
             Pattern::Null => {
-                if *self == Value::Null {
+                if let Self::Null = self {
                     PatternMatch::Simple
                 } else {
                     PatternMatch::None
@@ -111,7 +131,7 @@ impl Value {
 }
 
 pub fn interpret(expr: BoxExpr) -> Result<Value> {
-    recurse(expr, HashMap::new())
+    recurse(expr, HashMap::new())?.eval()
 }
 
 #[allow(clippy::boxed_local, clippy::too_many_lines)]
@@ -132,69 +152,83 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
         Expression::Paren(parexpr) => {
             match *parexpr {
                 ParenExpression::Plus { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(first_num + second_num))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use + on a null value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(first_num + second_num))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use + \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Minus { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(first_num - second_num))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use − on a null value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(first_num - second_num))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use − \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Times { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(first_num * second_num))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use × on a null value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(first_num * second_num))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use × \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Equals { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(usize::from(first_num == second_num)))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use = on a null value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(usize::from(first_num == second_num)))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use = \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Condition { predicate, yes, no } => {
-                    match recurse(predicate, idents.clone())? {
-                        Value::Number(num) => {
-                            if num > 0 {
-                                recurse(yes, idents)
-                            } else {
-                                recurse(no, idents)
-                            }
-                        }
-                        Value::Cons(_) => recurse(yes, idents), // TODO decide on correct behaviour here
-                        Value::Null => recurse(no, idents),
-                        Value::Lambda(_) => bail!(
-                            "The program must be invalid, because you can't use a lambda \
-                         as the predicate for a conditional."
-                        ),
+                    if recurse(predicate, idents.clone())?.truthy()? {
+                        recurse(yes, idents)
+                    } else {
+                        recurse(no, idents)
                     }
                 }
                 ParenExpression::Lambda { arg, body } => Ok(Value::Lambda(Lambda {
                     arg: arg.clone(),
-                    func: Rc::new(move |idents| recurse(body.clone(), idents)),
+                    func: Rc::new(move |value| {
+                        let mut local_idents = idents.clone();
+                        local_idents.insert(arg.clone(), value);
+                        recurse(body.clone(), local_idents)
+                    }),
                 })),
                 ParenExpression::Binding { name, value, body } => {
                     idents.insert(name.clone(), recurse(value, idents.clone())?);
@@ -206,120 +240,183 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
                 ))),
                 ParenExpression::Car { cons } => {
                     let cons_val = recurse(cons, idents)?;
-                    if let Value::Cons(cons_cell) = cons_val {
-                        Ok(*cons_cell.0)
-                    } else {
-                        bail!(
-                            "The program must be invalid, because \"car\" only works on \
-                         cons cells, not {cons_val:?}"
-                        )
-                    }
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
+                            Ok(*cons_cell.0)
+                        } else {
+                            bail!(
+                                "The program must be invalid, because \"car\" only works on \
+                            cons cells, not {cons_val}"
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Cdr { cons } => {
                     let cons_val = recurse(cons, idents)?;
-                    if let Value::Cons(cons_cell) = cons_val {
-                        Ok(*cons_cell.1)
-                    } else {
-                        bail!(
-                            "The program must be invalid, because \"cdr\" only works on \
-                         cons cells, not {cons_val:?}"
-                        )
-                    }
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
+                            Ok(*cons_cell.1)
+                        } else {
+                            bail!(
+                                "The program must be invalid, because \"cdr\" only works on \
+                            cons cells, not {cons_val}"
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::NullCheck { value } => {
-                    if let Value::Null = recurse(value, idents)? {
-                        Ok(Value::Number(1))
-                    } else {
-                        Ok(Value::Number(0))
-                    }
+                    let value = recurse(value, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Null = value.clone().eval()? {
+                            Ok(Value::Number(1))
+                        } else {
+                            Ok(Value::Number(0))
+                        }
+                    })))
                 }
                 ParenExpression::LessThan { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(usize::from(first_num < second_num)))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use \
-                         ‹ on a non-numeric value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(usize::from(first_num < second_num)))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use ‹ \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::GreaterThan { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(usize::from(first_num > second_num)))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use \
-                         › on a non-numeric value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(usize::from(first_num > second_num)))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use › \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::LogicalAnd { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(usize::from(
-                            first_num != 0 && second_num != 0,
-                        )))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use \
-                         ∧ on a non-numeric value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(usize::from(
+                                first_num != 0 && second_num != 0,
+                            )))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use ∧ \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::LogicalOr { first, second } => {
-                    if let Value::Number(first_num) = recurse(first, idents.clone())?
-                        && let Value::Number(second_num) = recurse(second, idents)?
-                    {
-                        Ok(Value::Number(usize::from(
-                            first_num != 0 || second_num != 0,
-                        )))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use \
-                         ∨ on a non-numeric value."
-                        )
-                    }
+                    let first_val = recurse(first, idents.clone())?;
+                    let second_val = recurse(second, idents)?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(first_num) = first_val.clone().eval()?
+                            && let Value::Number(second_num) = second_val.clone().eval()?
+                        {
+                            Ok(Value::Number(usize::from(
+                                first_num != 0 || second_num != 0,
+                            )))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use ∨ \
+                                 on non-numeric values."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::LogicalNot { value } => {
-                    if let Value::Number(value_num) = recurse(value, idents.clone())? {
-                        Ok(Value::Number(usize::from(value_num == 0)))
-                    } else {
-                        bail!(
-                            "The program must be invalid, because you can't use \
-                           ¬ on a non-numeric value."
-                        )
-                    }
+                    let value = recurse(value, idents.clone())?;
+                    Ok(Value::Application(Rc::new(move || {
+                        if let Value::Number(value_num) = value.clone().eval()? {
+                            Ok(Value::Number(usize::from(value_num == 0)))
+                        } else {
+                            bail!(
+                                "The program must be invalid, because you can't use \
+                            ¬ on a non-numeric value."
+                            )
+                        }
+                    })))
                 }
                 ParenExpression::Match { value, patterns } => {
                     idents.insert("_match".to_string(), recurse(value, idents.clone())?); // Underscores are reserved characters
-                    let mut found = Value::Null;
+                    let mut pattern_values = Vec::new();
                     for pattern in patterns {
-                        match recurse(Box::new(Expression::PatternClause(pattern)), idents.clone())?
-                        {
-                            Value::Null => {}
-                            other => found = other,
-                        }
+                        pattern_values.push(recurse(
+                            Box::new(Expression::PatternClause(pattern)),
+                            idents.clone(),
+                        )?);
                     }
-                    Ok(found)
+
+                    Ok(Value::Application(Rc::new(move || {
+                        let mut found = Value::Null;
+                        for pattern in pattern_values.clone() {
+                            match pattern.eval()? {
+                                Value::Null => {}
+                                other => found = other,
+                            }
+                        }
+                        Ok(found)
+                    })))
                 }
+                // TODO decide if variadic forms are even needed - lambdas only take one arg!
                 ParenExpression::Exprs { exprs } => {
-                    let mut expr_iter = exprs.into_iter();
-                    // TODO decide if variadic forms are even needed - lambdas only take one arg!
-                    if let Some(first_expr) = expr_iter.next()
-                        && let Value::Lambda(lambda) = recurse(first_expr, idents.clone())?
-                        && let Some(arg) = expr_iter.next()
-                    {
-                        idents.insert(lambda.name, recurse(arg, idents.clone())?);
-                        (lambda.func)(idents)
+                    let mut expr_iter = exprs.clone().into_iter();
+                    let first_expr = expr_iter.next();
+                    if first_expr.is_none() {
+                        bail!(
+                            "The program must be invalid, because lambda application was used \
+                         on an empty list of terms - it should look like `()`."
+                        )
+                    }
+                    let applicant = recurse(first_expr.unwrap(), idents.clone())?;
+
+                    let arg_expr = expr_iter.next();
+                    if arg_expr.is_none() {
+                        bail!(
+                            "The program must be invalid, because lambda application was used \
+                         without any arguments - it should look like `(<one term>)`."
+                        )
+                    }
+                    let arg = recurse(arg_expr.unwrap(), idents)?;
+
+                    if let Value::Lambda(lambda) = applicant {
+                        Ok(Value::Application(Rc::new(move || {
+                            lambda.clone().call(arg.clone())
+                        })))
+                    } else if let Value::Application(_) = applicant {
+                        Ok(Value::Application(Rc::new(move || {
+                            let evaluated = applicant.clone().eval()?;
+                            if let Value::Lambda(lambda) = evaluated {
+                                lambda.call(arg.clone())
+                            } else {
+                                bail!(
+                                    "The program must be invalid, because lambda application was used \
+                                    lazily on something that was not a lambda - instead it was: {evaluated}"
+                                )
+                            }
+                        })))
                     } else {
                         bail!(
                             "The program must be invalid, because lambda application was used \
-                         on a non-lambda value or with too few arguments."
+                         on something that was not a lambda - instead it was: {applicant}"
                         )
                     }
                 }
@@ -351,10 +448,70 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
     use super::*;
 
     use crate::parser::parse;
     use crate::tokeniser::tokenise;
+
+    impl PartialEq for Lambda {
+        fn eq(&self, other: &Self) -> bool {
+            other.arg == self.arg
+        }
+    }
+
+    impl PartialEq for Value {
+        fn eq(&self, other: &Self) -> bool {
+            match self {
+                Self::Null => {
+                    if let Self::Null = other {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                Self::Number(num) => {
+                    if let Self::Number(other_num) = other {
+                        other_num == num
+                    } else {
+                        false
+                    }
+                }
+                Self::Cons((value0, value1)) => {
+                    if let Self::Cons((other0, other1)) = other {
+                        other0 == value0 && other1 == value1
+                    } else {
+                        false
+                    }
+                }
+                Self::Lambda(lambda) => {
+                    if let Self::Lambda(other_lambda) = other {
+                        other_lambda.arg == lambda.arg
+                    } else {
+                        false
+                    }
+                }
+                Self::Application(func) => {
+                    if let Self::Application(other_func) = other {
+                        match ((func)(), (other_func)()) {
+                            (Ok(value), Ok(other_value)) => value == other_value,
+                            (Err(err), Err(other_err)) => err.to_string() == other_err.to_string(),
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    impl Debug for Value {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{self}")
+        }
+    }
 
     fn interpret_str(prog: &str) -> Value {
         interpret(parse(tokenise(prog).unwrap()).unwrap()).unwrap()
@@ -396,6 +553,11 @@ mod tests {
     #[test]
     fn interpret_binding() {
         assert_eq!(interpret_str("(≜ x 10 (+ x x))"), Value::Number(20));
+    }
+
+    #[test]
+    fn interpret_unbound_ident() {
+        assert!(interpret(parse(tokenise("(⌒)").unwrap()).unwrap()).is_err());
     }
 
     #[test]
@@ -525,5 +687,129 @@ mod tests {
             ),
             Value::Number(1)
         )
+    }
+
+    #[test]
+    fn interpret_currying() {
+        assert_eq!(
+            interpret_str(
+                "(≜ times
+                    (λ x
+                        (λ y
+                            (× x y)))
+                    ((times 6) 7))"
+            ),
+            Value::Number(42)
+        );
+    }
+
+    #[test]
+    fn interpret_lazily() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Ω
+                    ((λ x (x x)) (λ x (x x)))
+                    ((λ x 1) Ω))"
+            ),
+            Value::Number(1)
+        )
+    }
+
+    #[test]
+    fn interpret_y_combinator() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Y
+                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+                    ((Y (λ r (λ n (+ n 1)))) 5))"
+            ),
+            Value::Number(6)
+        );
+    }
+
+    #[test]
+    fn interpret_z_combinator() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Z
+                    (λ f
+                        ((λ x (f (λ v ((x x) v))))
+                            (λ x (f (λ v ((x x) v))))))
+                    (≜ G
+                    (λ r (λ n (+ n 1)))
+                    (≜ add-one
+                        (Z G)
+                        (add-one 1))))"
+            ),
+            Value::Number(2)
+        );
+    }
+
+    #[test]
+    fn interpret_factorial() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Y
+                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+                    (≜ factorial
+                        (Y (λ f
+                            (λ n
+                                (? (= n 0)
+                                    1
+                                    (× n (f (− n 1)))))))
+                        (factorial 5)))"
+            ),
+            Value::Number(120)
+        );
+    }
+
+    #[test]
+    fn interpret_fibonacci() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Y
+                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+                        (≜ fib
+                            (Y (λ f
+                                (λ n (? (= n 0)
+                                    0
+                                    (? (= n 1)
+                                        1
+                                        (+ (f (− n 1)) (f (− n 2))))))))
+                            (fib 10)))"
+            ),
+            Value::Number(55)
+        );
+    }
+
+    #[test]
+    fn interpret_sum() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Y
+                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+                    (≜ sum
+                        (Y (λ f
+                            (λ lst (⊢ lst
+                                (∅ 0)
+                                ((∷ x xs) (+ x (f xs)))))))
+                        (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))"
+            ),
+            Value::Number(6)
+        );
+    }
+
+    #[test]
+    fn interpret_list_length() {
+        assert_eq!(
+            interpret_str(
+                "(≜ Y
+                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+                    (≜ length
+                        (Y (λ f (λ lst (? (∘ lst) 0 (+ 1 (f (→ lst)))))))
+                        (length (∷ 1 (∷ 2 (∷ 3 ∅))))))"
+            ),
+            Value::Number(3)
+        );
     }
 }
