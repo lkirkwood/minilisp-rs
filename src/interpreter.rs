@@ -21,6 +21,9 @@ impl Lambda {
 }
 
 #[derive(Clone)]
+/// A concrete value - the result of an expression being evaluated.
+/// Because the interpreter is lazy, this includes uncomputed lambda applications.
+/// These can be recursively computed using the `eval` function.
 pub enum Value {
     Null,
     Number(usize),
@@ -43,6 +46,8 @@ impl Value {
         }
     }
 
+    /// Recursively force lazy computation on the current value until it is no longer a
+    /// lambda application.
     fn eval(mut self) -> Result<Self> {
         while let Self::Application(func) = self {
             self = (func)()?;
@@ -70,6 +75,7 @@ impl Display for Value {
     }
 }
 
+/// Represents what kind of pattern match occurred.
 enum PatternMatch {
     None,
     Simple,
@@ -77,7 +83,7 @@ enum PatternMatch {
 }
 
 impl Value {
-    /// Returns a
+    /// Match this value against a pattern.
     fn matches(&self, pattern: &Pattern) -> PatternMatch {
         match pattern {
             Pattern::Wildcard => PatternMatch::Simple,
@@ -129,10 +135,12 @@ impl Value {
     }
 }
 
+/// Lazily interpret a recursive expression.
 pub fn interpret(expr: BoxExpr) -> Result<Value> {
     recurse(expr, HashMap::new())?.eval()
 }
 
+/// Performs the provided two-argument numeric operation lazily.
 fn two_arg_numeric_op(
     first: BoxExpr,
     second: BoxExpr,
