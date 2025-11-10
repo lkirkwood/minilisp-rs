@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Result, bail};
 
-use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern, PatternClause};
+use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern};
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -165,7 +165,7 @@ fn two_arg_numeric_op(
 }
 
 #[allow(clippy::boxed_local)]
-fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
+fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
         Expression::Paren(parexpr) => recurse_parexpr(*parexpr, idents),
         Expression::Null => Ok(Value::Null),
@@ -181,21 +181,10 @@ fn recurse(expr: BoxExpr, mut idents: HashMap<String, Value>) -> Result<Value> {
             }
         }
         Expression::PatternClause(patt_clause) => {
-            let PatternClause { pattern, body } = *patt_clause;
-            match idents.get("_match") {
-                Some(matchval) => match matchval.matches(&pattern) {
-                    PatternMatch::None => Ok(Value::Null),
-                    PatternMatch::Simple => recurse(body, idents),
-                    PatternMatch::Binding(bindings) => {
-                        idents.extend(bindings);
-                        recurse(body, idents)
-                    }
-                },
-                None => bail!(
-                    "Something went wrong internally; matching a pattern clause \
-                    without any _match ident."
-                ),
-            }
+            bail!(
+                "Something went wrong internally; shouldn't be evaluating a pattern clause \
+                on its own, outside of a match statement. The clause was: {patt_clause:#?}"
+            )
         }
         Expression::Wildcard => bail!(
             "The program must be invalid, because a wildcard character \
@@ -323,27 +312,34 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
                 }
             })))
         }
-        ParenExpression::Match { value, patterns } => {
-            idents.insert("_match".to_string(), recurse(value, idents.clone())?); // Underscores are reserved characters
-            let mut pattern_values = Vec::new();
-            for pattern in patterns {
-                pattern_values.push(recurse(
-                    Box::new(Expression::PatternClause(pattern)),
-                    idents.clone(),
-                )?);
-            }
-
-            Ok(Value::Application(Rc::new(move || {
-                let mut found = Value::Null;
-                for pattern in pattern_values.clone() {
-                    match pattern.eval()? {
-                        Value::Null => {}
-                        other => found = other,
+        ParenExpression::Match { value, patterns } => Ok(Value::Application(Rc::new(move || {
+            let mut idents = idents.clone();
+            let predicate = recurse(value.clone(), idents.clone())?.eval()?;
+            let mut found = None;
+            for pattern in &patterns {
+                match predicate.matches(&pattern.pattern) {
+                    PatternMatch::None => {}
+                    PatternMatch::Simple => {
+                        found = Some(recurse(pattern.body.clone(), idents)?);
+                        break;
+                    }
+                    PatternMatch::Binding(bindings) => {
+                        idents.extend(bindings);
+                        found = Some(recurse(pattern.body.clone(), idents)?);
+                        break;
                     }
                 }
-                Ok(found)
-            })))
-        }
+            }
+
+            if let Some(match_body) = found {
+                Ok(match_body)
+            } else {
+                bail!(
+                    "The program must be invalid, because there is no pattern \
+                    that matches the value: {predicate}"
+                )
+            }
+        }))),
         ParenExpression::Application { lambda, argument } => {
             let lambda_val = recurse(lambda, idents.clone())?;
             let arg_val = recurse(argument, idents)?;
@@ -630,15 +626,15 @@ mod tests {
     }
 
     #[test]
-    fn interpret_match_first_non_null() {
-        // TODO decide if this behaviour is ok
+    fn interpret_match_first_pattern() {
         assert_eq!(
             interpret_str(
                 "(⊢ 42
                     (42 ∅)
-                    (_ 1))"
+                    (42 1)
+                    (_  2))"
             ),
-            Value::Number(1)
+            Value::Null
         )
     }
 
