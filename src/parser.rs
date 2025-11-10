@@ -373,6 +373,22 @@ mod tests {
 
     #[test]
     fn parse_unbound_ident() {
-        assert!(parse(tokenise("(⌒)").unwrap()).is_err());
+        assert_eq!(
+            parse(tokenise("(+ ⌒ 1)").unwrap()).unwrap(),
+            boxparexpr!(ParenExpression::Plus {
+                first: Box::new(Expression::Identifier("⌒".to_string())),
+                second: Box::new(Expression::Number(1))
+            })
+        );
+    }
+
+    #[test]
+    fn parse_lambda_application_one_term() {
+        assert!(parse(tokenise("(some-lambda)").unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_lambda_application_three_terms() {
+        assert!(parse(tokenise("(some-lambda 1 2)").unwrap()).is_err());
     }
 }
