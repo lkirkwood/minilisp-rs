@@ -561,6 +561,42 @@ mod tests {
     }
 
     #[test]
+    fn interpret_match_cons_concrete() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
+                    (∅ 0)
+                    ((∷ 42 (∷ 43 (∷ 44 ∅))) 1))"
+            ),
+            Value::Number(1)
+        )
+    }
+
+    #[test]
+    fn interpret_match_cons_partial_concrete_1() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
+                    (∅ 0)
+                    ((∷ 42 (∷ 43 x)) x))"
+            ),
+            Value::Cons((Box::new(Value::Number(44)), Box::new(Value::Null)))
+        )
+    }
+
+    #[test]
+    fn interpret_match_cons_partial_concrete_2() {
+        assert_eq!(
+            interpret_str(
+                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
+                    (∅ 0)
+                    ((∷ 42 (∷ x (∷ 44 ∅))) x))"
+            ),
+            Value::Number(43)
+        )
+    }
+
+    #[test]
     fn interpret_match_complex_1() {
         assert_eq!(
             interpret_str(
@@ -730,7 +766,7 @@ mod tests {
                         (Y (λ f
                             (λ lst (⊢ lst
                                 (∅ 0)
-                                ((∷ x xs) (+ x (f xs)))))))
+                                ((∷ car cdr) (+ car (f cdr)))))))
                         (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))"
             ),
             Value::Number(6)

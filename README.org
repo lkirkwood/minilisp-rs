@@ -8,6 +8,21 @@ Simple add-one function.
 (≜ add-one (λ x (+ x 1)) (add-one 5))
 #+end_src
 
+#+begin_src
+6
+#+end_src
+
+Structural pattern matching.
+#+begin_src
+(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
+    (∅ 0)
+    ((∷ 42 (∷ x (∷ 44 ∅))) x))
+#+end_src
+
+#+begin_src
+43
+#+end_src
+
 Factorial function using the Y combinator.
 #+begin_src
 (≜ Y
@@ -19,6 +34,10 @@ Factorial function using the Y combinator.
                     1
                     (× n (f (− n 1)))))))
         (factorial 5)))
+#+end_src
+
+#+begin_src
+120
 #+end_src
 
 Fibonacci numbers.
@@ -35,6 +54,10 @@ Fibonacci numbers.
         (fib 10)))
 #+end_src
 
+#+begin_src
+55
+#+end_src
+
 Sum of list with structural pattern matching.
 #+begin_src
 (≜ Y
@@ -43,8 +66,12 @@ Sum of list with structural pattern matching.
         (Y (λ f
             (λ lst (⊢ lst
                 (∅ 0)
-                ((∷ x xs) (+ x (f xs)))))))
+                ((∷ car cdr) (+ car (f cdr)))))))
         (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))
+#+end_src
+
+#+begin_src
+6
 #+end_src
 
 List length.
@@ -54,4 +81,8 @@ List length.
     (≜ length
         (Y (λ f (λ lst (? (∘ lst) 0 (+ 1 (f (→ lst)))))))
         (length (∷ 1 (∷ 2 (∷ 3 ∅))))))
+#+end_src
+
+#+begin_src
+3
 #+end_src
