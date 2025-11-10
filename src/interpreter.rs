@@ -392,7 +392,7 @@ mod tests {
     impl PartialEq for Value {
         fn eq(&self, other: &Self) -> bool {
             match self {
-                Self::Null => matches!(self, Self::Null),
+                Self::Null => matches!(other, Self::Null),
                 Self::Number(num) => {
                     if let Self::Number(other_num) = other {
                         other_num == num
