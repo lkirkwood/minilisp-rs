@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 #[macro_use]
 mod ast;
@@ -17,7 +17,7 @@ fn help() {
 }
 
 fn run(program: &str) -> Result<()> {
-    let tokens = tokeniser::tokenise(&program)?;
+    let tokens = tokeniser::tokenise(program)?;
 
     let expression = parser::parse(tokens)?;
 
