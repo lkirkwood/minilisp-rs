@@ -34,12 +34,11 @@ impl Value {
     fn truthy(self) -> Result<bool> {
         match self {
             Self::Number(num) => Ok(num > 0),
-            Self::Cons(_) => Ok(true), // TODO decide on correct behaviour here
             Self::Null => Ok(false),
             Self::Application(func) => (func)()?.truthy(),
-            Self::Lambda(_) => bail!(
+            Self::Lambda(_) | Self::Cons(_) => bail!(
                 "The program must be invalid, because you can't use a lambda \
-            as the predicate for a conditional."
+                or a cons cell as the predicate for a conditional."
             ),
         }
     }
