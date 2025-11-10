@@ -91,7 +91,7 @@ impl Value {
                 PatternMatch::Binding(HashMap::from([(ident.clone(), self.clone())]))
             }
             Pattern::Null => {
-                if let Self::Null = self {
+                if matches!(self, Self::Null) {
                     PatternMatch::Simple
                 } else {
                     PatternMatch::None
@@ -392,13 +392,7 @@ mod tests {
     impl PartialEq for Value {
         fn eq(&self, other: &Self) -> bool {
             match self {
-                Self::Null => {
-                    if let Self::Null = other {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Self::Null => matches!(self, Self::Null),
                 Self::Number(num) => {
                     if let Self::Number(other_num) = other {
                         other_num == num
