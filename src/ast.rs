@@ -123,8 +123,9 @@ pub enum ParenExpression {
         value: BoxExpr,
         patterns: Vec<BoxPattClause>,
     },
-    Exprs {
-        exprs: Vec<BoxExpr>,
+    Application {
+        lambda: BoxExpr,
+        argument: BoxExpr,
     },
 }
 
@@ -225,8 +226,8 @@ macro_rules! boxparexpr {
 impl ParenExprBuilder {
     pub fn new(token: Token) -> Result<Self> {
         match token {
-            Token::RightParen => {
-                bail!("First token in a paren expression can't be a ')'.")
+            Token::RightParen | Token::Wildcard | Token::Null | Token::Number(_) => {
+                bail!("First token in a paren expression can't be a {token:?}.")
             }
             _ => Ok(Self {
                 token,
@@ -245,10 +246,6 @@ impl ParenExprBuilder {
         }
 
         match &self.token {
-            Token::LeftParen | Token::Number(_) | Token::Identifier(_) | Token::Null => {
-                self.terms.push(expr);
-                self.terms_finished = true;
-            }
             Token::Match => {
                 if self.terms.is_empty() {
                     self.terms.push(expr);
@@ -264,6 +261,8 @@ impl ParenExprBuilder {
                 }
             }
             Token::Plus
+            | Token::LeftParen
+            | Token::Identifier(_)
             | Token::Minus
             | Token::Times
             | Token::Equals
@@ -317,13 +316,10 @@ impl ParenExprBuilder {
                     self.terms_finished = true;
                 }
             }
-            Token::RightParen => bail!(
+            Token::RightParen | Token::Wildcard | Token::Null | Token::Number(_) => bail!(
                 "Something went wrong internally; can't build a paren expression \
-                 that started with a right parenthesis.",
-            ),
-            Token::Wildcard => bail!(
-                "Something went wrong internally; can't build a paren expression \
-                 that started with a wildcard.",
+                 that started with a {:?}.",
+                self.token
             ),
         }
 
@@ -337,9 +333,20 @@ impl ParenExprBuilder {
         }
 
         match &self.token {
-            Token::LeftParen | Token::Identifier(_) | Token::Number(_) | Token::Null => {
-                Ok(boxparexpr!(ParenExpression::Exprs {
-                    exprs: self.terms.clone()
+            Token::LeftParen | Token::Identifier(_) => {
+                if self.terms.len() < 2 {
+                    bail!(
+                        "Something went wrong internally; can't finish a lambda application \
+                         expression with less than two terms."
+                    )
+                }
+                dbg!(&self.terms);
+
+                let argument = self.terms.pop().unwrap();
+                let lambda = self.terms.pop().unwrap();
+                Ok(boxparexpr!(ParenExpression::Application {
+                    lambda,
+                    argument
                 }))
             }
             Token::Match => {
@@ -572,7 +579,7 @@ impl ParenExprBuilder {
                 let value = self.terms.pop().unwrap();
                 Ok(boxparexpr!(ParenExpression::LogicalNot { value }))
             }
-            Token::RightParen | Token::Wildcard => bail!(
+            Token::RightParen | Token::Wildcard | Token::Null | Token::Number(_) => bail!(
                 "Something went wrong internally; can't finish a paren expression \
                  that started with a right parenthesis or a wildcard.",
             ),

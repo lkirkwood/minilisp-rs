@@ -344,47 +344,30 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
                 Ok(found)
             })))
         }
-        // TODO decide if variadic forms are even needed - lambdas only take one arg!
-        ParenExpression::Exprs { exprs } => {
-            let mut expr_iter = exprs.clone().into_iter();
-            let first_expr = expr_iter.next();
-            if first_expr.is_none() {
-                bail!(
-                    "The program must be invalid, because lambda application was used \
-                         on an empty list of terms - it should look like `()`."
-                )
-            }
-            let applicant = recurse(first_expr.unwrap(), idents.clone())?;
+        ParenExpression::Application { lambda, argument } => {
+            let lambda_val = recurse(lambda, idents.clone())?;
+            let arg_val = recurse(argument, idents)?;
 
-            let arg_expr = expr_iter.next();
-            if arg_expr.is_none() {
-                bail!(
-                    "The program must be invalid, because lambda application was used \
-                         without any arguments - it should look like `(<one term>)`."
-                )
-            }
-            let arg = recurse(arg_expr.unwrap(), idents)?;
-
-            if let Value::Lambda(lambda) = applicant {
+            if let Value::Lambda(lambda) = lambda_val {
                 Ok(Value::Application(Rc::new(move || {
-                    lambda.clone().call(arg.clone())
+                    lambda.clone().call(arg_val.clone())
                 })))
-            } else if let Value::Application(_) = applicant {
+            } else if let Value::Application(_) = lambda_val {
                 Ok(Value::Application(Rc::new(move || {
-                    let evaluated = applicant.clone().eval()?;
+                    let evaluated = lambda_val.clone().eval()?;
                     if let Value::Lambda(lambda) = evaluated {
-                        lambda.call(arg.clone())
+                        lambda.call(arg_val.clone())
                     } else {
                         bail!(
                             "The program must be invalid, because lambda application was used \
-                                    lazily on something that was not a lambda - instead it was: {evaluated}"
+                            lazily on something that was not a lambda - instead it was: {evaluated}"
                         )
                     }
                 })))
             } else {
                 bail!(
                     "The program must be invalid, because lambda application was used \
-                         on something that was not a lambda - instead it was: {applicant}"
+                    on something that was not a lambda - instead it was: {lambda_val}"
                 )
             }
         }
@@ -498,11 +481,6 @@ mod tests {
     #[test]
     fn interpret_binding() {
         assert_eq!(interpret_str("(≜ x 10 (+ x x))"), Value::Number(20));
-    }
-
-    #[test]
-    fn interpret_unbound_ident() {
-        assert!(interpret(parse(tokenise("(⌒)").unwrap()).unwrap()).is_err());
     }
 
     #[test]

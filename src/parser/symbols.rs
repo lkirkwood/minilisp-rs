@@ -63,7 +63,6 @@ impl From<Token> for Terminal {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum NonTerminal {
     Expression,
-    Expressions,
     ParenExpression,
     PatternClauses,
     Epsilon,
@@ -119,36 +118,6 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
                     term!(LeftParen),
                     nonterm!(ParenExpression),
                     term!(RightParen),
-                ],
-            ),
-            // expressions -> number
-            (
-                (Terminal::Number, NonTerminal::Expressions),
-                vec![term!(Number), nonterm!(Expressions)],
-            ),
-            // expressions -> identifier
-            (
-                (Terminal::Identifier, NonTerminal::Expressions),
-                vec![term!(Identifier), nonterm!(Expressions)],
-            ),
-            // expressions -> null
-            (
-                (Terminal::Null, NonTerminal::Expressions),
-                vec![term!(Null), nonterm!(Expressions)],
-            ),
-            // expressions -> wildcard
-            (
-                (Terminal::Wildcard, NonTerminal::Expressions),
-                vec![term!(Wildcard), nonterm!(Expressions)],
-            ),
-            // expressions -> paren expression
-            (
-                (Terminal::LeftParen, NonTerminal::Expressions),
-                vec![
-                    term!(LeftParen),
-                    nonterm!(ParenExpression),
-                    term!(RightParen),
-                    nonterm!(Expressions),
                 ],
             ),
             // paren expression -> plus
@@ -249,25 +218,15 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
                 (Terminal::LogicalNot, NonTerminal::ParenExpression),
                 vec![term!(LogicalNot), nonterm!(Expression)],
             ),
-            // paren expression -> expressions
-            (
-                (Terminal::Number, NonTerminal::ParenExpression),
-                vec![nonterm!(Expressions)],
-            ),
-            // paren expression -> expressions
+            // paren expression -> application
             (
                 (Terminal::Identifier, NonTerminal::ParenExpression),
-                vec![nonterm!(Expressions)],
+                vec![nonterm!(Expression), nonterm!(Expression)],
             ),
-            // paren expression -> expressions
+            // paren expression -> application
             (
                 (Terminal::LeftParen, NonTerminal::ParenExpression),
-                vec![nonterm!(Expressions)],
-            ),
-            // expressions -> right paren
-            (
-                (Terminal::RightParen, NonTerminal::Expressions),
-                vec![nonterm!(Epsilon)],
+                vec![nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> match
             (

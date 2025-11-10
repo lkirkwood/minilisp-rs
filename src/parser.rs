@@ -70,12 +70,15 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                 {
                     // --- Building AST ---
                     match nonterm_symb {
-                        NonTerminal::Expression | NonTerminal::Expressions => {
+                        NonTerminal::Expression => {
                             builder_stack.push(Builder::Expr(ExprBuilder::new()));
                         }
                         NonTerminal::ParenExpression => {
                             builder_stack
                                 .push(Builder::Paren(ParenExprBuilder::new(token.clone())?));
+                        }
+                        NonTerminal::PatternClauses => {
+                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()));
                         }
                         NonTerminal::End => bail!(
                             "Something went wrong internally; found transition for the end symbol!"
@@ -83,9 +86,6 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         NonTerminal::Epsilon => bail!(
                             "Something went wrong internally; found transition for the epsilon symbol!"
                         ),
-                        NonTerminal::PatternClauses => {
-                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()));
-                        }
                     }
                     // --------------------
 
@@ -110,8 +110,8 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
             Ok(expr)
         } else {
             bail!(
-                "Something went wrong internally; the program was recognised, but the AST wasn't finished.
-    The expression builder stack looks like:
+                "Something went wrong internally; the program was recognised, \
+                 but the AST wasn't finished. The expression builder stack looks like:
     {builder_stack:#?}"
             )
         }
@@ -189,17 +189,15 @@ mod tests {
     fn parse_lambda_immediate() {
         assert_eq!(
             parse(tokenise("((λ x (+ x 1)) 5)").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Exprs {
-                exprs: vec![
-                    boxparexpr!(ParenExpression::Lambda {
-                        arg: "x".to_string(),
-                        body: boxparexpr!(ParenExpression::Plus {
-                            first: Box::new(Expression::Identifier("x".to_string())),
-                            second: Box::new(Expression::Number(1))
-                        })
-                    }),
-                    Box::new(Expression::Number(5))
-                ]
+            boxparexpr!(ParenExpression::Application {
+                lambda: boxparexpr!(ParenExpression::Lambda {
+                    arg: "x".to_string(),
+                    body: boxparexpr!(ParenExpression::Plus {
+                        first: Box::new(Expression::Identifier("x".to_string())),
+                        second: Box::new(Expression::Number(1))
+                    })
+                }),
+                argument: Box::new(Expression::Number(5))
             })
         )
     }
@@ -217,11 +215,9 @@ mod tests {
                         second: Box::new(Expression::Number(1))
                     })
                 }),
-                body: boxparexpr!(ParenExpression::Exprs {
-                    exprs: vec![
-                        Box::new(Expression::Identifier("add-one".to_string())),
-                        Box::new(Expression::Number(5))
-                    ]
+                body: boxparexpr!(ParenExpression::Application {
+                    lambda: Box::new(Expression::Identifier("add-one".to_string())),
+                    argument: Box::new(Expression::Number(5))
                 })
             })
         )
@@ -373,5 +369,10 @@ mod tests {
                 ]
             })
         );
+    }
+
+    #[test]
+    fn parse_unbound_ident() {
+        assert!(parse(tokenise("(⌒)").unwrap()).is_err());
     }
 }
