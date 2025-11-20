@@ -1,4 +1,7 @@
-use std::process::exit;
+use std::{
+    io::{BufRead, stdin},
+    process::exit,
+};
 
 use anyhow::Result;
 
@@ -10,10 +13,18 @@ mod tokeniser;
 
 fn help() {
     eprintln!("minilisp - a tiny LISP interpreter.");
-    eprintln!("Usage: minilisp [--help | -h] [FILE]\n");
+    eprintln!("Usage: minilisp [--help | -h] [--repl | -r] [FILE]\n");
     eprintln!("If FILE is '-', the program will be read from stdin.\n");
     eprintln!("Options:");
     eprintln!("\t --help | -h    --   Print this message and exit.");
+    eprintln!("\t --repl | -r    --   Enter a primitive REPL.");
+}
+
+fn repl() -> Result<String> {
+    let mut program = String::new();
+    stdin().lock().read_line(&mut program)?;
+    println!("{:-<80}", "");
+    Ok(program)
 }
 
 fn run(program: &str) -> Result<()> {
@@ -32,20 +43,30 @@ fn main() -> Result<()> {
     let mut args = std::env::args();
     match args.nth(1) {
         None => {
-            eprintln!("Error: a program to run is required as an argument.\n\n");
+            eprintln!("Error: at least one argument is required.\n\n");
             help();
             exit(1);
         }
-        Some(opt) if opt.as_str() == "-h" || opt.as_str() == "--help" => help(),
-        Some(arg) if arg.as_str() == "-" => run(args.collect::<String>().as_str())?,
-        Some(path) => match std::fs::read_to_string(&path) {
-            Ok(program) => run(&program)?,
-            Err(err) => {
-                eprintln!("Failed to read program at {path}: {err}\n\n");
-                help();
-                exit(1);
+        Some(arg) => {
+            let arg = arg.as_str();
+
+            if matches!(arg, "--help" | "-h") {
+                help()
+            } else if matches!(arg, "--repl" | "-r") {
+                run(&repl()?)?
+            } else if arg == "-" {
+                run(args.collect::<String>().as_str())?
+            } else {
+                match std::fs::read_to_string(&arg) {
+                    Ok(program) => run(&program)?,
+                    Err(err) => {
+                        eprintln!("Failed to read program at {arg}: {err}\n\n");
+                        help();
+                        exit(1);
+                    }
+                }
             }
-        },
+        }
     }
 
     Ok(())
