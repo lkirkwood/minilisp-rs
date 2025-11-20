@@ -656,9 +656,9 @@ mod tests {
     fn interpret_lazily() {
         assert_eq!(
             interpret_str(
-                "(≜ Ω
+                "(≜ omega-combinator
                     ((λ x (x x)) (λ x (x x)))
-                    ((λ x 1) Ω))"
+                    ((λ x 1) omega-combinator))"
             ),
             Value::Number(1)
         )

@@ -89,21 +89,19 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '⊢' => tokens.push(Token::Match),
             '_' => tokens.push(Token::Wildcard),
             '0'..='9' => {
-                if let Some(BufferedType::Identifier) = buf_type {
-                    bail!("Numeric character in token that started as an identifier: {character}")
+                if buf_type.is_none() {
+                    buf_type = Some(BufferedType::Number);
                 }
-                buf_type = Some(BufferedType::Number);
                 char_buf.push(character);
             }
-            _ => {
+            'a'..='z' | 'A'..='Z' | '-' => {
                 if let Some(BufferedType::Number) = buf_type {
-                    bail!(
-                        "Identifier-class character in token that started as a number: {character}"
-                    )
+                    bail!("Identifier character in token that started as a number: {character}")
                 }
                 buf_type = Some(BufferedType::Identifier);
                 char_buf.push(character);
             }
+            other => bail!("Invalid character in the program: {other}"),
         }
     }
 
@@ -219,8 +217,21 @@ mod tests {
     }
 
     #[test]
-    fn tokenise_invalid_ident() {
-        assert!(tokenise("(≜ lst99 (∷ 42 ∅))").is_err());
+    fn tokenise_ident_with_num() {
+        assert_eq!(
+            tokenise("(≜ lst99 (∷ 42 ∅))").unwrap(),
+            vec![
+                Token::LeftParen,
+                Token::Binding,
+                Token::Identifier("lst99".to_string()),
+                Token::LeftParen,
+                Token::Cons,
+                Token::Number(42),
+                Token::Null,
+                Token::RightParen,
+                Token::RightParen
+            ]
+        );
     }
 
     #[test]

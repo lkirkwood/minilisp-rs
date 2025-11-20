@@ -374,9 +374,9 @@ mod tests {
     #[test]
     fn parse_unbound_ident() {
         assert_eq!(
-            parse(tokenise("(+ ⌒ 1)").unwrap()).unwrap(),
+            parse(tokenise("(+ unbound 1)").unwrap()).unwrap(),
             boxparexpr!(ParenExpression::Plus {
-                first: Box::new(Expression::Identifier("⌒".to_string())),
+                first: Box::new(Expression::Identifier("unbound".to_string())),
                 second: Box::new(Expression::Number(1))
             })
         );
