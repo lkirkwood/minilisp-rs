@@ -51,13 +51,13 @@ fn main() -> Result<()> {
             let arg = arg.as_str();
 
             if matches!(arg, "--help" | "-h") {
-                help()
+                help();
             } else if matches!(arg, "--repl" | "-r") {
-                run(&repl()?)?
+                run(&repl()?)?;
             } else if arg == "-" {
-                run(args.collect::<String>().as_str())?
+                run(args.collect::<String>().as_str())?;
             } else {
-                match std::fs::read_to_string(&arg) {
+                match std::fs::read_to_string(arg) {
                     Ok(program) => run(&program)?,
                     Err(err) => {
                         eprintln!("Failed to read program at {arg}: {err}\n\n");
