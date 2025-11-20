@@ -238,4 +238,30 @@ mod tests {
     fn tokenise_invalid_number() {
         assert!(tokenise("(≜ lst (∷ 42abc ∅))").is_err());
     }
+
+    #[test]
+    fn tokenise_ident_char_boundaries() {
+        assert_eq!(
+            tokenise("(≜ a-to-z-and-A-to-Z 42)").unwrap(),
+            vec![
+                Token::LeftParen,
+                Token::Binding,
+                Token::Identifier("a-to-z-and-A-to-Z".to_string()),
+                Token::Number(42),
+                Token::RightParen
+            ]
+        )
+    }
+
+    #[test]
+    fn tokenise_ident_char_invalid() {
+        // before A
+        assert!(tokenise("(≜ @ 42)").is_err());
+        // after Z
+        assert!(tokenise("(≜ [ 42)").is_err());
+        // before a
+        assert!(tokenise("(≜ ` 42)").is_err());
+        // after z
+        assert!(tokenise("(≜ { 42)").is_err());
+    }
 }
