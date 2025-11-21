@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 
 use crate::{
-    ast::{BoxExpr, Builder, ExprBuilder, ParenExprBuilder, PattClauseBuilder},
+    ast::{BoxExpr, Builder, ExprBuilder, ParenExprBuilder},
     tokeniser::Token,
 };
 
@@ -37,14 +37,10 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         && Token::RightParen == token
                     {
                         parexpr_builder.close_paren();
-                    } else if let Builder::PatternClause(ref mut pattclause_builder) = top_expr
-                        && Token::RightParen == token
-                    {
-                        pattclause_builder.close_paren();
                     }
 
                     while top_expr.finished() {
-                        let finished_expr = top_expr.finish()?;
+                        let finished_expr = top_expr.build()?;
                         if builder_stack.is_empty() {
                             root_expr = Some(finished_expr);
                             break;
@@ -76,9 +72,6 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         NonTerminal::ParenExpression => {
                             builder_stack
                                 .push(Builder::Paren(ParenExprBuilder::new(token.clone())?));
-                        }
-                        NonTerminal::PatternClauses => {
-                            builder_stack.push(Builder::PatternClause(PattClauseBuilder::new()));
                         }
                         NonTerminal::End => bail!(
                             "Something went wrong internally; found transition for the end symbol!"
@@ -128,7 +121,7 @@ and the symbol stack was
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Expression, ParenExpression, Pattern, PatternClause},
+        ast::{Expression, ParenExpression},
         tokeniser::tokenise,
     };
 
@@ -305,68 +298,6 @@ mod tests {
                         })
                     })
                 })
-            })
-        );
-    }
-
-    #[test]
-    fn parse_match() {
-        assert_eq!(
-            parse(
-                tokenise(
-                    "(⊢ 42
-                        (42 1)
-                        (99 0))",
-                )
-                .unwrap(),
-            )
-            .unwrap(),
-            boxparexpr!(ParenExpression::Match {
-                value: Box::new(Expression::Number(42)),
-                patterns: vec![
-                    Box::new(PatternClause {
-                        pattern: Box::new(Pattern::Number(42)),
-                        body: Box::new(Expression::Number(1))
-                    }),
-                    Box::new(PatternClause {
-                        pattern: Box::new(Pattern::Number(99)),
-                        body: Box::new(Expression::Number(0))
-                    })
-                ]
-            })
-        );
-    }
-
-    #[test]
-    fn parse_match_cons() {
-        assert_eq!(
-            parse(
-                tokenise(
-                    "(⊢ (∷ 42 99)
-                        (∅ 0)
-                        ((∷ x _) x))",
-                )
-                .unwrap(),
-            )
-            .unwrap(),
-            boxparexpr!(ParenExpression::Match {
-                value: boxparexpr!(ParenExpression::Cons {
-                    car: Box::new(Expression::Number(42)),
-                    cdr: Box::new(Expression::Number(99))
-                }),
-                patterns: vec![
-                    Box::new(PatternClause {
-                        pattern: Box::new(Pattern::Null),
-                        body: Box::new(Expression::Number(0))
-                    }),
-                    Box::new(PatternClause {
-                        pattern: Box::new(Pattern::Cons((
-                            Box::new(Pattern::Identifier("x".to_string())),
-                            Box::new(Pattern::Wildcard)
-                        ))),
-                        body: Box::new(Expression::Identifier("x".to_string()))
-                    })
-                ]
             })
         );
     }

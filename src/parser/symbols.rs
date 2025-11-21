@@ -25,8 +25,6 @@ pub enum Terminal {
     LogicalAnd,
     LogicalOr,
     LogicalNot,
-    Match,
-    Wildcard,
 }
 
 impl From<Token> for Terminal {
@@ -53,8 +51,6 @@ impl From<Token> for Terminal {
             Token::LogicalAnd => Self::LogicalAnd,
             Token::LogicalOr => Self::LogicalOr,
             Token::LogicalNot => Self::LogicalNot,
-            Token::Match => Self::Match,
-            Token::Wildcard => Self::Wildcard,
         }
     }
 }
@@ -64,7 +60,6 @@ impl From<Token> for Terminal {
 pub enum NonTerminal {
     Expression,
     ParenExpression,
-    PatternClauses,
     Epsilon,
     End,
 }
@@ -106,11 +101,6 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             ),
             // expression -> null
             ((Terminal::Null, NonTerminal::Expression), vec![term!(Null)]),
-            // expression -> wildcard
-            (
-                (Terminal::Wildcard, NonTerminal::Expression),
-                vec![term!(Wildcard)],
-            ),
             // expression -> paren expression
             (
                 (Terminal::LeftParen, NonTerminal::Expression),
@@ -227,27 +217,6 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
             (
                 (Terminal::LeftParen, NonTerminal::ParenExpression),
                 vec![nonterm!(Expression), nonterm!(Expression)],
-            ),
-            // paren expression -> match
-            (
-                (Terminal::Match, NonTerminal::ParenExpression),
-                vec![term!(Match), nonterm!(Expression), nonterm!(PatternClauses)],
-            ),
-            // pattern clauses -> pattern
-            (
-                (Terminal::LeftParen, NonTerminal::PatternClauses),
-                vec![
-                    term!(LeftParen),
-                    nonterm!(Expression),
-                    nonterm!(Expression),
-                    term!(RightParen),
-                    nonterm!(PatternClauses),
-                ],
-            ),
-            // pattern clauses -> pattern clause
-            (
-                (Terminal::RightParen, NonTerminal::PatternClauses),
-                vec![nonterm!(Epsilon)],
             ),
         ])
     });

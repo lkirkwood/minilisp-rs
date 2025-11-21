@@ -23,8 +23,6 @@ pub enum Token {
     LogicalAnd,
     LogicalOr,
     LogicalNot,
-    Match,
-    Wildcard,
 }
 
 enum BufferedType {
@@ -86,8 +84,6 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '∧' => tokens.push(Token::LogicalAnd),
             '∨' => tokens.push(Token::LogicalOr),
             '¬' => tokens.push(Token::LogicalNot),
-            '⊢' => tokens.push(Token::Match),
-            '_' => tokens.push(Token::Wildcard),
             '0'..='9' => {
                 if buf_type.is_none() {
                     buf_type = Some(BufferedType::Number);

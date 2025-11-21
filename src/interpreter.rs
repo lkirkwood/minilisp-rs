@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Result, bail};
 
-use crate::ast::{BoxExpr, Expression, ParenExpression, Pattern};
+use crate::ast::{BoxExpr, Expression, ParenExpression};
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -75,66 +75,6 @@ impl Display for Value {
     }
 }
 
-/// Represents what kind of pattern match occurred.
-enum PatternMatch {
-    None,
-    Simple,
-    Binding(HashMap<String, Value>),
-}
-
-impl Value {
-    /// Match this value against a pattern.
-    fn matches(&self, pattern: &Pattern) -> PatternMatch {
-        match pattern {
-            Pattern::Wildcard => PatternMatch::Simple,
-            Pattern::Identifier(ident) => {
-                PatternMatch::Binding(HashMap::from([(ident.clone(), self.clone())]))
-            }
-            Pattern::Null => {
-                if matches!(self, Self::Null) {
-                    PatternMatch::Simple
-                } else {
-                    PatternMatch::None
-                }
-            }
-            Pattern::Number(their_num) => {
-                if let Self::Number(our_num) = self
-                    && our_num == their_num
-                {
-                    PatternMatch::Simple
-                } else {
-                    PatternMatch::None
-                }
-            }
-            Pattern::Cons((pattern0, pattern1)) => {
-                if let Value::Cons((value0, value1)) = self {
-                    let mut bindings = HashMap::new();
-
-                    match value0.matches(pattern0) {
-                        PatternMatch::Binding(bindings0) => bindings.extend(bindings0),
-                        PatternMatch::Simple => {}
-                        PatternMatch::None => return PatternMatch::None,
-                    }
-
-                    match value1.matches(pattern1) {
-                        PatternMatch::Binding(bindings1) => bindings.extend(bindings1),
-                        PatternMatch::Simple => {}
-                        PatternMatch::None => return PatternMatch::None,
-                    }
-
-                    if bindings.is_empty() {
-                        PatternMatch::Simple
-                    } else {
-                        PatternMatch::Binding(bindings)
-                    }
-                } else {
-                    PatternMatch::None
-                }
-            }
-        }
-    }
-}
-
 /// Lazily interpret a recursive expression.
 pub fn interpret(expr: BoxExpr) -> Result<Value> {
     recurse(expr, HashMap::new())?.eval()
@@ -180,16 +120,6 @@ fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
                 )
             }
         }
-        Expression::PatternClause(patt_clause) => {
-            bail!(
-                "Something went wrong internally; shouldn't be evaluating a pattern clause \
-                on its own, outside of a match statement. The clause was: {patt_clause:#?}"
-            )
-        }
-        Expression::Wildcard => bail!(
-            "The program must be invalid, because a wildcard character \
-            `_` can only be present as a pattern in a match statement."
-        ),
     }
 }
 
@@ -312,34 +242,6 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
                 }
             })))
         }
-        ParenExpression::Match { value, patterns } => Ok(Value::Application(Rc::new(move || {
-            let mut idents = idents.clone();
-            let predicate = recurse(value.clone(), idents.clone())?.eval()?;
-            let mut found = None;
-            for pattern in &patterns {
-                match predicate.matches(&pattern.pattern) {
-                    PatternMatch::None => {}
-                    PatternMatch::Simple => {
-                        found = Some(recurse(pattern.body.clone(), idents)?);
-                        break;
-                    }
-                    PatternMatch::Binding(bindings) => {
-                        idents.extend(bindings);
-                        found = Some(recurse(pattern.body.clone(), idents)?);
-                        break;
-                    }
-                }
-            }
-
-            if let Some(match_body) = found {
-                Ok(match_body)
-            } else {
-                bail!(
-                    "The program must be invalid, because there is no pattern \
-                    that matches the value: {predicate}"
-                )
-            }
-        }))),
         ParenExpression::Application { lambda, argument } => {
             let lambda_val = recurse(lambda, idents.clone())?;
             let arg_val = recurse(argument, idents)?;
@@ -512,133 +414,6 @@ mod tests {
     }
 
     #[test]
-    fn interpret_match() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ 42
-                    (42 1)
-                    (99 0))"
-            ),
-            Value::Number(1)
-        )
-    }
-
-    #[test]
-    fn interpret_match_cons() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ (∷ 42 99)
-                    (∅ 0)
-                    ((∷ x _) x))"
-            ),
-            Value::Number(42)
-        )
-    }
-
-    #[test]
-    fn interpret_match_cons_concrete() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
-                    (∅ 0)
-                    ((∷ 42 (∷ 43 (∷ 44 ∅))) 1))"
-            ),
-            Value::Number(1)
-        )
-    }
-
-    #[test]
-    fn interpret_match_cons_partial_concrete_1() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
-                    (∅ 0)
-                    ((∷ 42 (∷ 43 x)) x))"
-            ),
-            Value::Cons((Box::new(Value::Number(44)), Box::new(Value::Null)))
-        )
-    }
-
-    #[test]
-    fn interpret_match_cons_partial_concrete_2() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
-                    (∅ 0)
-                    ((∷ 42 (∷ x (∷ 44 ∅))) x))"
-            ),
-            Value::Number(43)
-        )
-    }
-
-    #[test]
-    fn interpret_match_complex_1() {
-        assert_eq!(
-            interpret_str(
-                "(≜ first-or-default
-                    (λ lst (⊢ lst
-                        (∅ 0)
-                        ((∷ x _) x)))
-                    (first-or-default (∷ 42 ∅)))"
-            ),
-            Value::Number(42)
-        )
-    }
-
-    #[test]
-    fn interpret_match_complex_2() {
-        assert_eq!(
-            interpret_str(
-                "(≜ first-or-default
-                    (λ lst (⊢ lst
-                        (∅ 0)
-                        ((∷ _ y) y)))
-                    (first-or-default (∷ 42 ∅)))"
-            ),
-            Value::Null
-        )
-    }
-
-    #[test]
-    fn interpret_match_complex_3() {
-        assert_eq!(
-            interpret_str(
-                "(≜ first-or-default
-                    (λ lst (⊢ lst
-                        (∅ 0)
-                        ((∷ x y) (+ x y))))
-                    (first-or-default (∷ 42 1)))"
-            ),
-            Value::Number(43)
-        )
-    }
-
-    #[test]
-    fn interpret_match_deep_nest() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ (∷ 42 (∷ 43 (∷ 44 (∷ 45 ∅))))
-                    (∅ 0)
-                    ((∷ a (∷ b (∷ c (∷ d ∅)))) c))"
-            ),
-            Value::Number(44)
-        )
-    }
-
-    #[test]
-    fn interpret_match_first_pattern() {
-        assert_eq!(
-            interpret_str(
-                "(⊢ 42
-                    (42 ∅)
-                    (42 1)
-                    (_  2))"
-            ),
-            Value::Null
-        )
-    }
-
-    #[test]
     fn interpret_currying() {
         assert_eq!(
             interpret_str(
@@ -728,23 +503,6 @@ mod tests {
                         (fib 10)))"
             ),
             Value::Number(55)
-        );
-    }
-
-    #[test]
-    fn interpret_sum() {
-        assert_eq!(
-            interpret_str(
-                "(≜ Y
-                    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
-                    (≜ sum
-                        (Y (λ f
-                            (λ lst (⊢ lst
-                                (∅ 0)
-                                ((∷ car cdr) (+ car (f cdr)))))))
-                        (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))"
-            ),
-            Value::Number(6)
         );
     }
 
