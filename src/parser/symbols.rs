@@ -60,7 +60,6 @@ impl From<Token> for Terminal {
 pub enum NonTerminal {
     Expression,
     ParenExpression,
-    Epsilon,
     End,
 }
 

@@ -72,16 +72,10 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                         NonTerminal::End => bail!(
                             "Something went wrong internally; found transition for the end symbol!"
                         ),
-                        NonTerminal::Epsilon => bail!(
-                            "Something went wrong internally; found transition for the epsilon symbol!"
-                        ),
                     }
                     // --------------------
 
                     symbols.extend(new_symbols.iter().cloned().rev());
-                    tokens.push(token);
-                } else if *nonterm_symb == NonTerminal::Epsilon {
-                    builders.pop();
                     tokens.push(token);
                 } else {
                     bail!(
