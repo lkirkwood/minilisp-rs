@@ -13,7 +13,7 @@ pub use symbols::*;
 /// Parse a list of tokens and return an AST - a single expression.
 pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
     tokens.reverse();
-    let mut builder_stack: Vec<Builder> = vec![Builder::Expr(ExprBuilder::new())];
+    let mut builders: Vec<Builder> = vec![Builder::Expr(ExprBuilder::new())];
     let mut root_expr: Option<BoxExpr> = None;
     let mut symbols = vec![nonterm!(End), nonterm!(Expression)];
 
@@ -25,31 +25,28 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
             StackSymbol::Terminal(term_symb) => {
                 if *term_symb == token.clone().into() {
                     // --- Building AST ---
-                    if builder_stack.is_empty() {
+                    if builders.is_empty() {
                         bail!(
                             "Something went wrong internally; the expression builder stack is empty."
                         )
                     }
-                    let mut top_expr = builder_stack.pop().unwrap();
+
+                    let mut top_expr = builders.pop().unwrap();
                     if let Ok(token_expr) = token.clone().try_into() {
                         top_expr.take(token_expr)?;
-                    } else if let Builder::Paren(ref mut parexpr_builder) = top_expr
-                        && Token::RightParen == token
-                    {
-                        parexpr_builder.close_paren();
                     }
 
                     while top_expr.finished() {
                         let finished_expr = top_expr.build()?;
-                        if builder_stack.is_empty() {
+                        if builders.is_empty() {
                             root_expr = Some(finished_expr);
                             break;
                         }
-                        top_expr = builder_stack.pop().unwrap();
+                        top_expr = builders.pop().unwrap();
                         top_expr.take(finished_expr)?;
                     }
 
-                    builder_stack.push(top_expr);
+                    builders.push(top_expr);
                     // --------------------
                     continue;
                 }
@@ -67,11 +64,10 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                     // --- Building AST ---
                     match nonterm_symb {
                         NonTerminal::Expression => {
-                            builder_stack.push(Builder::Expr(ExprBuilder::new()));
+                            builders.push(Builder::Expr(ExprBuilder::new()));
                         }
                         NonTerminal::ParenExpression => {
-                            builder_stack
-                                .push(Builder::Paren(ParenExprBuilder::new(token.clone())?));
+                            builders.push(Builder::Paren(ParenExprBuilder::new(token.clone())?));
                         }
                         NonTerminal::End => bail!(
                             "Something went wrong internally; found transition for the end symbol!"
@@ -85,7 +81,7 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
                     symbols.extend(new_symbols.iter().cloned().rev());
                     tokens.push(token);
                 } else if *nonterm_symb == NonTerminal::Epsilon {
-                    builder_stack.pop();
+                    builders.pop();
                     tokens.push(token);
                 } else {
                     bail!(
@@ -105,7 +101,7 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
             bail!(
                 "Something went wrong internally; the program was recognised, \
                  but the AST wasn't finished. The expression builder stack looks like:
-    {builder_stack:#?}"
+    {builders:#?}"
             )
         }
     } else {

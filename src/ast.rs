@@ -158,7 +158,6 @@ pub struct ParenExprBuilder {
     token: Token,
     terms: Vec<BoxExpr>,
     terms_finished: bool,
-    paren_closed: bool,
 }
 
 /// Convenience macro for creating a `BoxExpr` from a `ParenExpression`.
@@ -178,7 +177,6 @@ impl ParenExprBuilder {
                 token,
                 terms: Vec::new(),
                 terms_finished: false,
-                paren_closed: false,
             }),
         }
     }
@@ -496,12 +494,8 @@ impl ParenExprBuilder {
         }
     }
 
-    pub fn close_paren(&mut self) {
-        self.paren_closed = true;
-    }
-
     pub fn finished(&self) -> bool {
-        self.terms_finished && self.paren_closed
+        self.terms_finished
     }
 }
 
