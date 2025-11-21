@@ -167,11 +167,30 @@ macro_rules! boxparexpr {
     };
 }
 
+macro_rules! build_two_arg_parexpr {
+    ($terms:expr, $op_variant:ident) => {{
+        if $terms.len() != 2 {
+            bail!(
+                "Something went wrong internally; tried to build a {} expression \
+                    with {} terms, instead of 2.",
+                stringify!($op_variant),
+                $terms.len()
+            )
+        }
+        let second = $terms.pop().unwrap();
+        let first = $terms.pop().unwrap();
+        Ok(boxparexpr!(ParenExpression::$op_variant { first, second }))
+    }};
+}
+
 impl ParenExprBuilder {
     pub fn new(token: Token) -> Result<Self> {
         match token {
             Token::RightParen | Token::Null | Token::Number(_) => {
-                bail!("First token in a paren expression can't be a {token:?}.")
+                bail!(
+                    "Something went wrong internally; first token in a paren expression \
+                     can't be a {token:?}."
+                )
             }
             _ => Ok(Self {
                 token,
@@ -216,7 +235,10 @@ impl ParenExprBuilder {
                     if let Expression::Identifier(_) = &*expr {
                         self.terms.push(expr);
                     } else {
-                        bail!("The first term of a lambda must be an identifier, not {expr:?}")
+                        bail!(
+                            "Something went wrong internally; \
+                            the first term of a lambda must be an identifier, not {expr:?}"
+                        )
                     }
                 } else {
                     self.terms.push(expr);
@@ -230,7 +252,10 @@ impl ParenExprBuilder {
                     if let Expression::Identifier(_) = &*expr {
                         self.terms.push(expr);
                     } else {
-                        bail!("The first term of a binding must be an identifier, not {expr:?}")
+                        bail!(
+                            "Something went wrong internally; \
+                            The first term of a binding must be an identifier, not {expr:?}"
+                        )
                     }
                 } else {
                     self.terms.push(expr);
@@ -279,58 +304,22 @@ impl ParenExprBuilder {
                 }))
             }
             Token::Plus => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a plus expression \
-                         takes 2 terms, not {}.",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::Plus { first, second }))
+                build_two_arg_parexpr!(self.terms, Plus)
             }
             Token::Minus => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a minus expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::Minus { first, second }))
+                build_two_arg_parexpr!(self.terms, Minus)
             }
             Token::Times => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a times expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::Times { first, second }))
+                build_two_arg_parexpr!(self.terms, Times)
             }
             Token::Equals => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because an equals expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::Equals { first, second }))
+                build_two_arg_parexpr!(self.terms, Equals)
             }
             Token::Condition => {
                 if self.terms.len() != 3 {
                     bail!(
-                        "Program must be invalid, because a conditional \
-                         takes 3 terms, not {}",
+                        "Something went wrong internally; tried to build a conditional \
+                         with {} terms instead of 3.",
                         self.terms.len()
                     )
                 }
@@ -346,7 +335,8 @@ impl ParenExprBuilder {
             Token::Lambda => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a lambda takes 2 terms, not {}",
+                        "Something went wrong internally; tried to build a lambda \
+                        with {} terms instead of 2.",
                         self.terms.len()
                     )
                 }
@@ -357,7 +347,7 @@ impl ParenExprBuilder {
                     Ok(boxparexpr!(ParenExpression::Lambda { arg, body }))
                 } else {
                     bail!(
-                        "Program must be invalid, because a lambdas first term \
+                        "Something went wrong internally; a lambdas first term \
                          must be an identifier."
                     )
                 }
@@ -365,8 +355,8 @@ impl ParenExprBuilder {
             Token::Binding => {
                 if self.terms.len() != 3 {
                     bail!(
-                        "Program must be invalid, because a binding takes \
-                         3 terms, not {}",
+                        "Something went wrong internally; tried to build a binding \
+                         with {} terms instead of 3.",
                         self.terms.len()
                     )
                 }
@@ -378,7 +368,7 @@ impl ParenExprBuilder {
                     Ok(boxparexpr!(ParenExpression::Binding { name, value, body }))
                 } else {
                     bail!(
-                        "Program must be invalid, because a bindings first term \
+                        "Something went wrong internally; a bindings first term \
                          must be an identifier."
                     )
                 }
@@ -386,8 +376,8 @@ impl ParenExprBuilder {
             Token::Cons => {
                 if self.terms.len() != 2 {
                     bail!(
-                        "Program must be invalid, because a cons expression \
-                         takes 2 terms, not {}.",
+                        "Something went wrong internally; tried to build a cons expression \
+                         with {} terms instead of 2.",
                         self.terms.len()
                     )
                 }
@@ -398,8 +388,8 @@ impl ParenExprBuilder {
             Token::Car => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a car expression \
-                         takes 1 term, not {}.",
+                        "Something went wrong internally; tried to build a car expression \
+                         with {} terms instead of 1.",
                         self.terms.len()
                     )
                 }
@@ -409,8 +399,8 @@ impl ParenExprBuilder {
             Token::Cdr => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a cdr expression \
-                         takes 1 term, not {}.",
+                        "Something went wrong internally; tried to build a cdr expression \
+                         with {} terms instead of 1.",
                         self.terms.len()
                     )
                 }
@@ -420,8 +410,8 @@ impl ParenExprBuilder {
             Token::NullCheck => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a null check expression \
-                         takes 1 term, not {}.",
+                        "Something went wrong internally; tried to build a null check expression \
+                         with {} terms instead of 1.",
                         self.terms.len()
                     )
                 }
@@ -429,58 +419,22 @@ impl ParenExprBuilder {
                 Ok(boxparexpr!(ParenExpression::NullCheck { value }))
             }
             Token::LessThan => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a less than expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::LessThan { first, second }))
+                build_two_arg_parexpr!(self.terms, LessThan)
             }
             Token::GreaterThan => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a greater than expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::GreaterThan { first, second }))
+                build_two_arg_parexpr!(self.terms, GreaterThan)
             }
             Token::LogicalAnd => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a logical \"and\" expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::LogicalAnd { first, second }))
+                build_two_arg_parexpr!(self.terms, LogicalAnd)
             }
             Token::LogicalOr => {
-                if self.terms.len() != 2 {
-                    bail!(
-                        "Program must be invalid, because a logical \"or\" expression \
-                         takes 2 terms, not {}",
-                        self.terms.len()
-                    )
-                }
-                let second = self.terms.pop().unwrap();
-                let first = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::LogicalOr { first, second }))
+                build_two_arg_parexpr!(self.terms, LogicalOr)
             }
             Token::LogicalNot => {
                 if self.terms.len() != 1 {
                     bail!(
-                        "Program must be invalid, because a logical \"not\" expression \
-                         takes 2 terms, not {}",
+                        "Something went wrong internally; tried to build a logical \"not\" expression \
+                         with {} terms instead of 1.",
                         self.terms.len()
                     )
                 }

@@ -322,4 +322,24 @@ mod tests {
     fn parse_unmatched_parens_2() {
         assert!(parse(tokenise("(+ 1 2))").unwrap()).is_err());
     }
+
+    #[test]
+    fn parse_application_on_null() {
+        assert!(parse(tokenise("(∅)").unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_application_on_number() {
+        assert!(parse(tokenise("(42)").unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_lambda_invalid_arg_ident() {
+        assert!(parse(tokenise("(λ 42 (+ 42 1))").unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_binding_invalid_ident() {
+        assert!(parse(tokenise("(≜ 42 (+ 42 1))").unwrap()).is_err());
+    }
 }
