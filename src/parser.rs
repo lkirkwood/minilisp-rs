@@ -312,4 +312,14 @@ mod tests {
     fn parse_lambda_application_three_terms() {
         assert!(parse(tokenise("(some-lambda 1 2)").unwrap()).is_err());
     }
+
+    #[test]
+    fn parse_unmatched_parens_1() {
+        assert!(parse(tokenise("(+ 1 2").unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_unmatched_parens_2() {
+        assert!(parse(tokenise("(+ 1 2))").unwrap()).is_err());
+    }
 }
