@@ -358,6 +358,21 @@ mod tests {
     }
 
     #[test]
+    fn interpret_conditional_null_falsy() {
+        assert_eq!(interpret_str("(? ∅ 10 20)"), Value::Number(20));
+    }
+
+    #[test]
+    fn interpret_conditional_lambda_predicate() {
+        assert!(interpret(parse(tokenise("(? (λ x (+ x 1)) 10 20)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_conditional_cons_predicate() {
+        assert!(interpret(parse(tokenise("(? (∷ 42 ∅) 10 20)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
     fn interpret_lambda_immediate() {
         assert_eq!(interpret_str("((λ x (+ x 1)) 5)"), Value::Number(6))
     }
@@ -518,5 +533,35 @@ mod tests {
             ),
             Value::Number(3)
         );
+    }
+
+    #[test]
+    fn interpret_plus_non_numeric() {
+        assert!(interpret(parse(tokenise("(+ ∅ 1)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_unbound_ident() {
+        assert!(interpret(parse(tokenise("(+ not-bound 1)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_car_non_cons() {
+        assert!(interpret(parse(tokenise("(← 42)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_cdr_non_cons() {
+        assert!(interpret(parse(tokenise("(→ 42)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_lnot_non_numeric() {
+        assert!(interpret(parse(tokenise("(¬ ∅)").unwrap()).unwrap()).is_err());
+    }
+
+    #[test]
+    fn interpret_lazy_application_non_lambda() {
+        assert!(interpret(parse(tokenise("(((λ test (+ 1 2)) 3) 4)").unwrap()).unwrap()).is_err());
     }
 }
