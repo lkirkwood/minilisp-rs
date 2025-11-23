@@ -8,6 +8,7 @@ readme = "README.org"
 
 [dependencies]
 anyhow = "1.0"
+rand = { version = "0.9", features = ["std"] }
 
 [profile.dist]
 inherits = "release"
