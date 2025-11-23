@@ -26,7 +26,7 @@ impl Lambda {
 /// These can be recursively computed using the `eval` function.
 pub enum Value {
     Null,
-    Number(usize),
+    Number(isize),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
     Application(Rc<dyn Fn() -> Result<Value>>),
@@ -85,7 +85,7 @@ fn two_arg_numeric_op(
     first: BoxExpr,
     second: BoxExpr,
     idents: HashMap<String, Value>,
-    op: Box<dyn Fn(usize, usize) -> usize>,
+    op: Box<dyn Fn(isize, isize) -> isize>,
     op_char: char,
 ) -> Result<Value> {
     let first_val = recurse(first, idents.clone())?;
@@ -109,7 +109,7 @@ fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
         Expression::Paren(parexpr) => recurse_parexpr(*parexpr, idents),
         Expression::Null => Ok(Value::Null),
-        Expression::Number(num) => Ok(Value::Number(num)),
+        Expression::Number(num) => Ok(Value::Number(num as isize)),
         Expression::Identifier(ref ident) => {
             if let Some(val) = idents.get(ident) {
                 Ok(val.clone())
@@ -139,7 +139,7 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             first,
             second,
             idents,
-            Box::new(|n0, n1| usize::from(n0 == n1)),
+            Box::new(|n0, n1| isize::from(n0 == n1)),
             '=',
         ),
         ParenExpression::Condition { predicate, yes, no } => {
@@ -205,35 +205,35 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             first,
             second,
             idents,
-            Box::new(|n0, n1| usize::from(n0 < n1)),
+            Box::new(|n0, n1| isize::from(n0 < n1)),
             '‹',
         ),
         ParenExpression::GreaterThan { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| usize::from(n0 > n1)),
+            Box::new(|n0, n1| isize::from(n0 > n1)),
             '›',
         ),
         ParenExpression::LogicalAnd { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| usize::from(n0 != 0 && n1 != 0)),
+            Box::new(|n0, n1| isize::from(n0 != 0 && n1 != 0)),
             '∧',
         ),
         ParenExpression::LogicalOr { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| usize::from(n0 != 0 || n1 != 0)),
+            Box::new(|n0, n1| isize::from(n0 != 0 || n1 != 0)),
             '∨',
         ),
         ParenExpression::LogicalNot { value } => {
             let value = recurse(value, idents.clone())?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Number(value_num) = value.clone().eval()? {
-                    Ok(Value::Number(usize::from(value_num == 0)))
+                    Ok(Value::Number(isize::from(value_num == 0)))
                 } else {
                     bail!(
                         "The program must be invalid, because you can't use \
