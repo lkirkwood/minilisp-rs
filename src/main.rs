@@ -57,13 +57,10 @@ fn main() -> Result<()> {
             if arg == "help" {
                 help();
             } else if arg == "run" {
-                let file = match args.next() {
-                    None => {
-                        eprintln!("The run command requires a file as an argument.");
-                        help();
-                        exit(1);
-                    }
-                    Some(file) => file,
+                let Some(file) = args.next() else {
+                    eprintln!("The run command requires a file as an argument.");
+                    help();
+                    exit(1);
                 };
 
                 if file == "-" {

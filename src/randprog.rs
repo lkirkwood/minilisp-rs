@@ -51,10 +51,10 @@ impl ValueType {
         match self {
             ValueType::Null => Box::new(random_null) as Box<dyn Fn(Context) -> Result<BoxExpr>>,
             ValueType::Number => Box::new(random_number) as Box<dyn Fn(Context) -> Result<BoxExpr>>,
-            ValueType::Cons((car_target, cdr_target)) => {
-                Box::new(|context| random_cons(context, (*car_target.clone(), *cdr_target.clone())))
-                    as Box<dyn Fn(Context) -> Result<BoxExpr>>
-            }
+            ValueType::Cons((car_target, cdr_target)) => Box::new(|context| {
+                random_cons(context, &(*car_target.clone(), *cdr_target.clone()))
+            })
+                as Box<dyn Fn(Context) -> Result<BoxExpr>>,
             ValueType::Lambda(target_type) => {
                 Box::new(|context| random_lambda(context, *target_type.clone()))
                     as Box<dyn Fn(Context) -> Result<BoxExpr>>
@@ -122,7 +122,10 @@ fn random_expr(context: Context) -> Result<BoxExpr> {
         match random_range(0..4) {
             0 => random_null(context.deeper()),
             1 => random_number(context.deeper()),
-            2 => random_cons(context.deeper(), (ValueType::random(), ValueType::random())),
+            2 => random_cons(
+                context.deeper(),
+                &(ValueType::random(), ValueType::random()),
+            ),
             3 => random_lambda(context.deeper(), ValueType::random()),
             _ => unreachable!(),
         }
@@ -134,9 +137,8 @@ fn random_null(context: Context) -> Result<BoxExpr> {
     if random_num == 3 {
         if let Some(ident) = context.random_choice(&ValueType::Null) {
             return Ok(Box::new(Expression::Identifier(ident.to_string())));
-        } else {
-            random_num = random_range(0..3);
         }
+        random_num = random_range(0..3);
     }
 
     if context.depth > MAX_DEPTH {
@@ -144,7 +146,7 @@ fn random_null(context: Context) -> Result<BoxExpr> {
     } else {
         match random_num {
             0 => Ok(Box::new(Expression::Null)),
-            1 => random_paren_expr(context.deeper(), ValueType::Null),
+            1 => random_paren_expr(context.deeper(), &ValueType::Null),
             2 => random_expr(context.deeper()),
             _ => unreachable!(),
         }
@@ -161,17 +163,17 @@ fn random_number(context: Context) -> Result<BoxExpr> {
     }
 
     if context.depth > MAX_DEPTH {
-        Ok(Box::new(Expression::Number(random_range(0..100))))
+        Ok(Box::new(Expression::Number(random_range(0..100) as isize)))
     } else {
         match random_num {
-            0 => Ok(Box::new(Expression::Number(random_range(0..100)))),
-            1 => random_paren_expr(context.deeper(), ValueType::Number),
+            0 => Ok(Box::new(Expression::Number(random_range(0..100) as isize))),
+            1 => random_paren_expr(context.deeper(), &ValueType::Number),
             _ => unreachable!(),
         }
     }
 }
 
-fn random_cons(mut context: Context, target_type: (ValueType, ValueType)) -> Result<BoxExpr> {
+fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Result<BoxExpr> {
     let mut random_num = random_range(0..3);
     if random_num == 2 {
         if let Some(ident) = context.random_choice(&ValueType::Cons((
@@ -179,9 +181,8 @@ fn random_cons(mut context: Context, target_type: (ValueType, ValueType)) -> Res
             Box::new(target_type.1.clone()),
         ))) {
             return Ok(Box::new(Expression::Identifier(ident.to_string())));
-        } else {
-            random_num = random_range(0..2);
         }
+        random_num = random_range(0..2);
     }
 
     context = context.deeper();
@@ -192,7 +193,7 @@ fn random_cons(mut context: Context, target_type: (ValueType, ValueType)) -> Res
         })),
         1 => random_paren_expr(
             context,
-            ValueType::Cons((
+            &ValueType::Cons((
                 Box::new(target_type.0.clone()),
                 Box::new(target_type.1.clone()),
             )),
@@ -233,7 +234,7 @@ fn random_lambda(context: Context, target_type: ValueType) -> Result<BoxExpr> {
             arg: random_string(),
             body: target_type.random_expr_fn()(context.deeper())?
         })),
-        1 => random_paren_expr(context.deeper(), ValueType::Lambda(Box::new(target_type))),
+        1 => random_paren_expr(context.deeper(), &ValueType::Lambda(Box::new(target_type))),
         _ => unreachable!(),
     }
 }
@@ -248,7 +249,7 @@ macro_rules! random_two_arg_parexpr {
 }
 
 // TODO maybe make context shared reference, just remove binding after subexpr complete
-fn random_paren_expr(mut context: Context, target_type: ValueType) -> Result<BoxExpr> {
+fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Result<BoxExpr> {
     let random_target = target_type.random_expr_fn();
     context = context.deeper();
 
