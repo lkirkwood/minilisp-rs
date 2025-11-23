@@ -109,7 +109,7 @@ fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
         Expression::Paren(parexpr) => recurse_parexpr(*parexpr, idents),
         Expression::Null => Ok(Value::Null),
-        Expression::Number(num) => Ok(Value::Number(num as isize)),
+        Expression::Number(num) => Ok(Value::Number(num)),
         Expression::Identifier(ref ident) => {
             if let Some(val) = idents.get(ident) {
                 Ok(val.clone())

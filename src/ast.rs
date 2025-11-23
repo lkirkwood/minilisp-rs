@@ -10,7 +10,7 @@ pub type BoxParenExpr = Box<ParenExpression>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
-    Number(usize),
+    Number(isize),
     Identifier(String),
     Paren(BoxParenExpr),
     Null,
