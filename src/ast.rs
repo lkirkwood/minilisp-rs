@@ -386,7 +386,6 @@ impl ParenExprBuilder {
                          expression with less than two terms."
                     )
                 }
-                dbg!(&self.terms);
 
                 let argument = self.terms.pop().unwrap();
                 let lambda = self.terms.pop().unwrap();
