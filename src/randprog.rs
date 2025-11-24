@@ -94,6 +94,11 @@ impl Context {
     }
 }
 
+/// Produces a random, valid minilisp program.
+pub fn random_program() -> String {
+    random_ast().into()
+}
+
 /// Produces a random AST for a valid minilisp program.
 pub fn random_ast() -> BoxExpr {
     random_expr(Context {
