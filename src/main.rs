@@ -1,5 +1,5 @@
 use std::{
-    io::{BufRead, stdin},
+    io::{BufRead, Read, stdin},
     process::exit,
 };
 
@@ -64,7 +64,9 @@ fn main() -> Result<()> {
                 };
 
                 if file == "-" {
-                    run(args.collect::<String>().as_str())?;
+                    let mut buf = Vec::new();
+                    stdin().lock().read_to_end(&mut buf)?;
+                    run(&String::from_utf8(buf)?)?;
                 } else {
                     match std::fs::read_to_string(&file) {
                         Ok(program) => run(&program)?,
