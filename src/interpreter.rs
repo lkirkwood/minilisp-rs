@@ -76,8 +76,8 @@ impl Display for Value {
 }
 
 /// Lazily interpret a recursive expression.
-pub fn interpret(expr: BoxExpr) -> Result<Value> {
-    recurse(expr, HashMap::new())?.eval()
+pub fn interpret(expr: Expression) -> Result<Value> {
+    recurse(Box::new(expr), HashMap::new())?.eval()
 }
 
 /// Performs the provided two-argument numeric operation lazily.

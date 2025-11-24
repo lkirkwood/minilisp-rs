@@ -54,23 +54,23 @@ impl TryFrom<Token> for BoxExpr {
     }
 }
 
-impl From<BoxExpr> for String {
-    fn from(value: BoxExpr) -> Self {
-        match *value {
+impl From<Expression> for String {
+    fn from(value: Expression) -> Self {
+        match value {
             Expression::Null => "∅".to_string(),
             Expression::Number(num) => {
                 if num >= 0 {
                     num.to_string()
                 } else {
-                    boxparexpr!(ParenExpression::Minus {
+                    Expression::Paren(Box::new(ParenExpression::Minus {
                         first: Box::new(Expression::Number(0)),
-                        second: Box::new(Expression::Number(num))
-                    })
+                        second: Box::new(Expression::Number(num)),
+                    }))
                     .into()
                 }
             }
             Expression::Identifier(ident) => ident,
-            Expression::Paren(parexpr) => String::from(parexpr),
+            Expression::Paren(parexpr) => String::from(*parexpr),
         }
     }
 }
@@ -145,7 +145,7 @@ pub enum ParenExpression {
     },
 }
 
-fn two_arg_parexpr_to_string(op_char: char, first: BoxExpr, second: BoxExpr) -> String {
+fn two_arg_parexpr_to_string(op_char: char, first: Expression, second: Expression) -> String {
     format!(
         "({op_char} {} {})",
         String::from(first),
@@ -153,64 +153,68 @@ fn two_arg_parexpr_to_string(op_char: char, first: BoxExpr, second: BoxExpr) -> 
     )
 }
 
-impl From<BoxParenExpr> for String {
-    fn from(value: BoxParenExpr) -> Self {
-        match *value {
+impl From<ParenExpression> for String {
+    fn from(value: ParenExpression) -> Self {
+        match value {
             ParenExpression::Plus { first, second } => {
-                two_arg_parexpr_to_string('+', first, second)
+                two_arg_parexpr_to_string('+', *first, *second)
             }
             ParenExpression::Minus { first, second } => {
-                two_arg_parexpr_to_string('−', first, second)
+                two_arg_parexpr_to_string('−', *first, *second)
             }
             ParenExpression::Times { first, second } => {
-                two_arg_parexpr_to_string('×', first, second)
+                two_arg_parexpr_to_string('×', *first, *second)
             }
             ParenExpression::Equals { first, second } => {
-                two_arg_parexpr_to_string('=', first, second)
+                two_arg_parexpr_to_string('=', *first, *second)
             }
             ParenExpression::Condition { predicate, yes, no } => {
                 format!(
                     "(? {} {} {})",
-                    String::from(predicate),
-                    String::from(yes),
-                    String::from(no)
+                    String::from(*predicate),
+                    String::from(*yes),
+                    String::from(*no)
                 )
             }
             ParenExpression::Lambda { arg, body } => {
-                format!("(λ {arg} {})", String::from(body))
+                format!("(λ {arg} {})", String::from(*body))
             }
             ParenExpression::Binding { name, value, body } => {
-                format!("(≜ {name} {} {})", String::from(value), String::from(body))
+                format!(
+                    "(≜ {name} {} {})",
+                    String::from(*value),
+                    String::from(*body)
+                )
             }
             ParenExpression::Cons { car, cdr } => {
-                format!("(∷ {} {})", String::from(car), String::from(cdr))
+                format!("(∷ {} {})", String::from(*car), String::from(*cdr))
             }
             ParenExpression::Car { cons } => {
-                format!("(← {})", String::from(cons))
+                format!("(← {})", String::from(*cons))
             }
             ParenExpression::Cdr { cons } => {
-                format!("(→ {})", String::from(cons))
+                format!("(→ {})", String::from(*cons))
             }
             ParenExpression::NullCheck { value } => {
-                format!("(∘ {})", String::from(value))
+                format!("(∘ {})", String::from(*value))
             }
             ParenExpression::LessThan { first, second } => {
-                two_arg_parexpr_to_string('‹', first, second)
+                two_arg_parexpr_to_string('‹', *first, *second)
             }
             ParenExpression::GreaterThan { first, second } => {
-                two_arg_parexpr_to_string('›', first, second)
+                two_arg_parexpr_to_string('›', *first, *second)
             }
             ParenExpression::LogicalAnd { first, second } => {
-                two_arg_parexpr_to_string('∧', first, second)
+                two_arg_parexpr_to_string('∧', *first, *second)
             }
             ParenExpression::LogicalOr { first, second } => {
-                two_arg_parexpr_to_string('∨', first, second)
+                two_arg_parexpr_to_string('∨', *first, *second)
             }
             ParenExpression::LogicalNot { value } => {
-                format!("(¬ {})", String::from(value))
+                format!("(¬ {})", String::from(*value))
             }
             ParenExpression::Application { lambda, argument } => {
-                format!("({} {})", String::from(lambda), String::from(argument))
+                format!("({} {})", String::from(*lambda), String::from(*argument))
             }
         }
     }

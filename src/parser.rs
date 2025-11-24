@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 
 use crate::{
-    ast::{BoxExpr, Builder, ExprBuilder, ParenExprBuilder},
+    ast::{BoxExpr, Builder, ExprBuilder, Expression, ParenExprBuilder},
     tokeniser::Token,
 };
 
@@ -11,7 +11,7 @@ mod symbols;
 pub use symbols::*;
 
 /// Parse a list of tokens and return an AST - a single expression.
-pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
+pub fn parse(mut tokens: Vec<Token>) -> Result<Expression> {
     tokens.reverse();
     let mut builders: Vec<Builder> = vec![Builder::Expr(ExprBuilder::new())];
     let mut root_expr: Option<BoxExpr> = None;
@@ -90,7 +90,7 @@ pub fn parse(mut tokens: Vec<Token>) -> Result<BoxExpr> {
 
     if tokens.is_empty() && symbols.len() == 1 && symbols.pop().unwrap() == nonterm!(End) {
         if let Some(expr) = root_expr {
-            Ok(expr)
+            Ok(*expr)
         } else {
             bail!(
                 "Something went wrong internally; the program was recognised, \
@@ -121,7 +121,7 @@ mod tests {
     fn parse_number() {
         assert_eq!(
             parse(tokenise("42").unwrap()).unwrap(),
-            Box::new(Expression::Number(42))
+            Expression::Number(42)
         );
     }
 
@@ -129,7 +129,7 @@ mod tests {
     fn parse_addition() {
         assert_eq!(
             parse(tokenise("(+ 123 456)").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Plus {
+            *boxparexpr!(ParenExpression::Plus {
                 first: Box::new(Expression::Number(123)),
                 second: Box::new(Expression::Number(456))
             })
@@ -140,7 +140,7 @@ mod tests {
     fn parse_arithmetic() {
         assert_eq!(
             parse(tokenise("(+ (× 1 42) (− 42 0))").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Plus {
+            *boxparexpr!(ParenExpression::Plus {
                 first: boxparexpr!(ParenExpression::Times {
                     first: Box::new(Expression::Number(1)),
                     second: Box::new(Expression::Number(42))
@@ -157,7 +157,7 @@ mod tests {
     fn parse_conditional() {
         assert_eq!(
             parse(tokenise("(? (= 1 1) 10 20)").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Condition {
+            *boxparexpr!(ParenExpression::Condition {
                 predicate: boxparexpr!(ParenExpression::Equals {
                     first: Box::new(Expression::Number(1)),
                     second: Box::new(Expression::Number(1))
@@ -172,7 +172,7 @@ mod tests {
     fn parse_lambda_immediate() {
         assert_eq!(
             parse(tokenise("((λ x (+ x 1)) 5)").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Application {
+            *boxparexpr!(ParenExpression::Application {
                 lambda: boxparexpr!(ParenExpression::Lambda {
                     arg: "x".to_string(),
                     body: boxparexpr!(ParenExpression::Plus {
@@ -189,7 +189,7 @@ mod tests {
     fn parse_lambda_bound() {
         assert_eq!(
             parse(tokenise("(≜ add-one (λ x (+ x 1)) (add-one 5))").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Binding {
+            *boxparexpr!(ParenExpression::Binding {
                 name: "add-one".to_string(),
                 value: boxparexpr!(ParenExpression::Lambda {
                     arg: "x".to_string(),
@@ -215,7 +215,7 @@ mod tests {
     fn parse_binding() {
         assert_eq!(
             parse(tokenise("(≜ x 10 (+ x x))").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Binding {
+            *boxparexpr!(ParenExpression::Binding {
                 name: "x".to_string(),
                 value: Box::new(Expression::Number(10)),
                 body: boxparexpr!(ParenExpression::Plus {
@@ -230,7 +230,7 @@ mod tests {
     fn parse_comparison() {
         assert_eq!(
             parse(tokenise("(≜ x 10 (‹ x (+ x 1)))").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Binding {
+            *boxparexpr!(ParenExpression::Binding {
                 name: "x".to_string(),
                 value: Box::new(Expression::Number(10)),
                 body: boxparexpr!(ParenExpression::LessThan {
@@ -248,7 +248,7 @@ mod tests {
     fn parse_logic() {
         assert_eq!(
             parse(tokenise("(∧ 1 (∨ 0 (¬ 0)))").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::LogicalAnd {
+            *boxparexpr!(ParenExpression::LogicalAnd {
                 first: Box::new(Expression::Number(1)),
                 second: boxparexpr!(ParenExpression::LogicalOr {
                     first: Box::new(Expression::Number(0)),
@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(
             parse(tokenise("(≜ lst (∷ 42 (∷ 99 ∅)) (∨ (∘ (← lst)) (∘ (→ (→ lst)))))").unwrap())
                 .unwrap(),
-            boxparexpr!(ParenExpression::Binding {
+            *boxparexpr!(ParenExpression::Binding {
                 name: "lst".to_string(),
                 value: boxparexpr!(ParenExpression::Cons {
                     car: Box::new(Expression::Number(42)),
@@ -296,7 +296,7 @@ mod tests {
     fn parse_unbound_ident() {
         assert_eq!(
             parse(tokenise("(+ unbound 1)").unwrap()).unwrap(),
-            boxparexpr!(ParenExpression::Plus {
+            *boxparexpr!(ParenExpression::Plus {
                 first: Box::new(Expression::Identifier("unbound".to_string())),
                 second: Box::new(Expression::Number(1))
             })
