@@ -1,6 +1,13 @@
 use crate::tokeniser::Token;
 use anyhow::{Error, Result, bail};
 
+/// Convenience macro for creating a `BoxExpr` from a `ParenExpression`.
+macro_rules! boxparexpr {
+    ($parexpr:expr) => {
+        Box::new(Expression::Paren(Box::new($parexpr)))
+    };
+}
+
 // AST NODES
 
 /// A boxed Expression to allow recursive type structure.
@@ -158,13 +165,6 @@ pub struct ParenExprBuilder {
     token: Token,
     terms: Vec<BoxExpr>,
     terms_finished: bool,
-}
-
-/// Convenience macro for creating a `BoxExpr` from a `ParenExpression`.
-macro_rules! boxparexpr {
-    ($parexpr:expr) => {
-        Box::new(Expression::Paren(Box::new($parexpr)))
-    };
 }
 
 macro_rules! build_two_arg_parexpr {
