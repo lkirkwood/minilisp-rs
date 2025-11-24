@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
-use randprog::random_program;
+use randprog::random_ast;
 
 #[macro_use]
 mod ast;
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
             } else if arg == "repl" {
                 run(&repl()?)?;
             } else if arg == "random" {
-                let program_expr = random_program()?;
+                let program_expr = random_ast();
                 todo!("unparse and untokenise {program_expr:#?}");
             }
         }

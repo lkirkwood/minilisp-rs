@@ -95,7 +95,7 @@ impl Context {
 }
 
 /// Produces a random AST for a valid minilisp program.
-pub fn random_program() -> BoxExpr {
+pub fn random_ast() -> BoxExpr {
     random_expr(Context {
         value_type_idents: HashMap::new(),
         ident_value_types: HashMap::new(),
