@@ -1,6 +1,13 @@
 * minilisp
 
-A Rust implementation of the tiny LISP, [[https://github.com/lkirkwood/minilisp][minilisp]].
+A tiny, "aggressively LL(1) parseable" LISP.
+
+Minilisp aims to provide just enough on top of the lambda calculus to be an usable programming language, and absolutely nothing more. It is essentially a read-only language; all the built in operators deliberately written with obscure unicode characters to make it difficult to write by hand but easy to parse.
+
+** Demo
+Minilisp is capable of generating random, valid programs for testing other implementations. This is useful for demonstration and testing purposes. This is still a work in progress, and does not always generate valid or interesting programs.
+
+[[./demo.gif]]
 
 ** Examples
 Simple add-one function.
@@ -12,15 +19,9 @@ Simple add-one function.
 6
 #+end_src
 
-Structural pattern matching.
+The Y combinator, necessary for recursion as lambdas cannot reference themselves in their own body.
 #+begin_src
-(⊢ (∷ 42 (∷ 43 (∷ 44 ∅)))
-    (∅ 0)
-    ((∷ 42 (∷ x (∷ 44 ∅))) x))
-#+end_src
-
-#+begin_src
-43
+(λ f ((λ x (f (x x))) (λ x (f (x x)))))
 #+end_src
 
 Factorial function using the Y combinator.
@@ -40,7 +41,7 @@ Factorial function using the Y combinator.
 120
 #+end_src
 
-Fibonacci numbers.
+Fibonacci numbers using same.
 #+begin_src
 (≜ Y
     (λ f ((λ x (f (x x))) (λ x (f (x x)))))
@@ -58,22 +59,6 @@ Fibonacci numbers.
 55
 #+end_src
 
-Sum of list with structural pattern matching.
-#+begin_src
-(≜ Y
-    (λ f ((λ x (f (x x))) (λ x (f (x x)))))
-    (≜ sum
-        (Y (λ f
-            (λ lst (⊢ lst
-                (∅ 0)
-                ((∷ car cdr) (+ car (f cdr)))))))
-        (sum (∷ 1 (∷ 2 (∷ 3 ∅))))))
-#+end_src
-
-#+begin_src
-6
-#+end_src
-
 List length.
 #+begin_src
 (≜ Y
@@ -86,3 +71,37 @@ List length.
 #+begin_src
 3
 #+end_src
+
+** Specification
+*** Tokens
+|--------+---------+-------------------------+------------------------|
+| Symbol | Unicode | Name                    | Example                |
+|--------+---------+-------------------------+------------------------|
+| (      | U+0028  | Left paren              |                        |
+| )      | U+0029  | Right paren             |                        |
+| +      | U+002B  | Addition                | ~(+ 2 3) → 5~          |
+| −      | U+2212  | Subtraction             | ~(− 5 2) → 3~          |
+| ×      | U+00D7  | Multiplication          | ~(× 3 4) → 12~         |
+| =      | U+003D  | Equality                | ~(= 5 5) → 1~          |
+| ?      | U+003F  | Conditional             | ~(? 1 10 20) → 10~     |
+| λ      | U+03BB  | Lambda                  | ~(λ x (+ x 1))~        |
+| ≜      | U+225C  | Let binding             | ~(≜ x 5 (+ x x)) → 10~ |
+| ∅      | U+2205  | Nil (empty list)        | ~∅~                    |
+| ∷      | U+2237  | Cons (pair constructor) | ~(∷ 1 2)~              |
+| ←      | U+2190  | Car (first element)     | ~(← (∷ 1 2)) → 1~      |
+| →      | U+2192  | Cdr (second element)    | ~(→ (∷ 1 2)) → 2~      |
+| ∘      | U+2218  | Null check              | ~(∘ ∅) → 1~            |
+|--------+---------+-------------------------+------------------------|
+
+*** Grammar
+#+begin_src
+program    ::= expr
+expr       ::= number | identifier | '(' paren-expr ')'
+paren-expr ::= '+' expr expr | '−' expr expr | '×' expr expr
+                | '=' expr expr       | '?' expr expr expr
+                | 'λ' identifier expr | '≜' identifier expr expr
+                | '∅' | '∷' expr expr | '←' expr | '→' expr
+                | '∘' expr | expr expr
+#+end_src
+
+The final ~paren-expr~ form, ~'(' expr expr ')'~, is the application of a lambda (the first ~expr~) with an argument.
