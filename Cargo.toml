@@ -8,9 +8,14 @@ readme = "README.org"
 
 [dependencies]
 anyhow = "1.0"
-rand = { version = "0.9", features = ["std"] }
+rand = { version = "0.9" }
 
 [profile.dist]
 inherits = "release"
 lto = true
 codegen-units = 1
+opt-level = "z"
+debug = false
+strip = true
+incremental = false
+panic = "abort"
