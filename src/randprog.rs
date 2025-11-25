@@ -75,8 +75,18 @@ impl Context {
         }
     }
 
+    /// Return any random identifier.
+    fn random_ident(&self) -> Option<&str> {
+        for idents in self.value_type_idents.values() {
+            if !idents.is_empty() {
+                return Some(&idents[random_range(0..idents.len())]);
+            }
+        }
+        None
+    }
+
     /// Return a random identifier with the given `ValueType`.
-    fn random_choice(&self, value_type: &ValueType) -> Option<&str> {
+    fn random_with_type(&self, value_type: &ValueType) -> Option<&str> {
         if let Some(idents) = self.value_type_idents.get(value_type)
             && !idents.is_empty()
         {
@@ -111,7 +121,16 @@ fn random_expr(context: Context) -> Expression {
     if context.depth > MAX_DEPTH {
         random_number(context.deeper())
     } else {
-        match random_range(0..4) {
+        let mut random_num = random_range(0..10);
+        if random_num >= 4
+            && let Some(ident) = context.random_ident()
+        {
+            return Expression::Identifier(ident.to_string());
+        } else {
+            random_num = random_range(0..4)
+        }
+
+        match random_num {
             0 => random_null(context.deeper()),
             1 => random_number(context.deeper()),
             2 => random_cons(
@@ -125,9 +144,9 @@ fn random_expr(context: Context) -> Expression {
 }
 
 fn random_null(context: Context) -> Expression {
-    let mut random_num = random_range(0..4);
-    if random_num == 3 {
-        if let Some(ident) = context.random_choice(&ValueType::Null) {
+    let mut random_num = random_range(0..10);
+    if random_num >= 3 {
+        if let Some(ident) = context.random_with_type(&ValueType::Null) {
             return Expression::Identifier(ident.to_string());
         }
         random_num = random_range(0..3);
@@ -146,9 +165,9 @@ fn random_null(context: Context) -> Expression {
 }
 
 fn random_number(context: Context) -> Expression {
-    let mut random_num = random_range(0..3);
-    if random_num == 2 {
-        if let Some(ident) = context.random_choice(&ValueType::Number) {
+    let mut random_num = random_range(0..10);
+    if random_num >= 2 {
+        if let Some(ident) = context.random_with_type(&ValueType::Number) {
             return Expression::Identifier(ident.to_string());
         }
         random_num = random_range(0..2);
@@ -166,9 +185,9 @@ fn random_number(context: Context) -> Expression {
 }
 
 fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Expression {
-    let mut random_num = random_range(0..3);
-    if random_num == 2 {
-        if let Some(ident) = context.random_choice(&ValueType::Cons((
+    let mut random_num = random_range(0..10);
+    if random_num >= 2 {
+        if let Some(ident) = context.random_with_type(&ValueType::Cons((
             Box::new(target_type.0.clone()),
             Box::new(target_type.1.clone()),
         ))) {
@@ -195,9 +214,9 @@ fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Ex
 }
 
 fn random_bool(context: Context) -> Expression {
-    let mut random_num = random_range(0..3);
-    if random_num == 2 {
-        if let Some(boolean) = context.random_choice(&ValueType::Boolean) {
+    let mut random_num = random_range(0..10);
+    if random_num >= 2 {
+        if let Some(boolean) = context.random_with_type(&ValueType::Boolean) {
             return Expression::Identifier(boolean.to_string());
         }
         random_num = random_range(0..2);
@@ -211,10 +230,10 @@ fn random_bool(context: Context) -> Expression {
 }
 
 fn random_lambda(context: Context, target_type: ValueType) -> Expression {
-    let mut random_num = random_range(0..3);
-    if random_num == 2 {
+    let mut random_num = random_range(0..10);
+    if random_num >= 2 {
         if let Some(lambda) =
-            context.random_choice(&ValueType::Lambda(Box::new(target_type.clone())))
+            context.random_with_type(&ValueType::Lambda(Box::new(target_type.clone())))
         {
             return Expression::Identifier(lambda.to_string());
         }
