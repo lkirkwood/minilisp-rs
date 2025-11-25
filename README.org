@@ -5,7 +5,7 @@ A tiny, "aggressively LL(1) parseable" LISP.
 Minilisp aims to provide just enough on top of the lambda calculus to be an usable programming language, and absolutely nothing more. It is essentially a read-only language; all the built in operators deliberately written with obscure unicode characters to make it difficult to write by hand but easy to parse.
 
 ** Demo
-Minilisp is capable of generating random, valid programs for testing other implementations. This is useful for demonstration and testing purposes. This is still a work in progress, and does not always generate valid or interesting programs.
+Minilisp is capable of generating random, valid programs. This is useful for demonstration purposes and testing other implementations. This is still a work in progress, and does not always generate valid or interesting programs.
 
 [[./demo.gif]]
 
