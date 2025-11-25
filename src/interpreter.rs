@@ -52,6 +52,11 @@ impl Value {
         while let Self::Application(func) = self {
             self = (func)()?;
         }
+
+        if let Self::Cons((car, cdr)) = self {
+            self = Self::Cons((Box::new(car.eval()?), Box::new(cdr.eval()?)));
+        }
+
         Ok(self)
     }
 }
