@@ -126,9 +126,8 @@ fn random_expr(context: Context) -> Expression {
             && let Some(ident) = context.random_ident()
         {
             return Expression::Identifier(ident.to_string());
-        } else {
-            random_num = random_range(0..4)
         }
+        random_num = random_range(0..4);
 
         match random_num {
             0 => random_null(context.deeper()),
