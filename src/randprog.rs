@@ -52,7 +52,6 @@ impl ValueType {
     }
 }
 
-// TODO change to Context, add depth control
 #[derive(Clone)]
 struct Context {
     ident_value_types: HashMap<String, ValueType>,
