@@ -14,13 +14,12 @@ enum ValueType {
     Number,
     Cons((Box<ValueType>, Box<ValueType>)),
     Lambda(Box<ValueType>),
-    Boolean,
 }
 
 impl ValueType {
     /// Returns a random instance of `ValueType`.
     fn random() -> Self {
-        match random_range(0..5) {
+        match random_range(0..4) {
             0 => Self::Null,
             1 => Self::Number,
             2 => Self::Cons((
@@ -28,7 +27,6 @@ impl ValueType {
                 (Box::new(ValueType::random())),
             )),
             3 => Self::Lambda(Box::new(ValueType::random())),
-            4 => Self::Boolean,
             _ => unreachable!(),
         }
     }
@@ -47,7 +45,6 @@ impl ValueType {
                 Box::new(|context| random_lambda(context, *target_type.clone()))
                     as Box<dyn Fn(Context) -> Expression>
             }
-            ValueType::Boolean => Box::new(random_bool) as Box<dyn Fn(Context) -> Expression>,
         }
     }
 }
@@ -110,35 +107,46 @@ pub fn random_program() -> String {
 
 /// Produces a random AST for a valid minilisp program.
 pub fn random_ast() -> Expression {
-    random_expr(Context {
+    let context = Context {
         value_type_idents: HashMap::new(),
         ident_value_types: HashMap::new(),
         depth: 0,
-    })
+    };
+
+    match random_range(0..3) {
+        0 => random_null(context.deeper()),
+        1 => random_number(context.deeper()),
+        2 => random_cons(
+            context.deeper(),
+            &(ValueType::random(), ValueType::random()),
+        ),
+        _ => unreachable!(),
+    }
 }
 
 fn random_expr(context: Context) -> Expression {
-    if context.depth > MAX_DEPTH {
-        random_number(context.deeper())
-    } else {
-        let mut random_num = random_range(0..10);
-        if random_num >= 4
-            && let Some(ident) = context.random_ident()
-        {
-            return Expression::Identifier(ident.to_string());
-        }
-        random_num = random_range(0..4);
+    let mut random_num = random_range(0..10);
+    if random_num >= 4
+        && let Some(ident) = context.random_ident()
+    {
+        return Expression::Identifier(ident.to_string());
+    }
 
-        match random_num {
-            0 => random_null(context.deeper()),
-            1 => random_number(context.deeper()),
-            2 => random_cons(
-                context.deeper(),
-                &(ValueType::random(), ValueType::random()),
-            ),
-            3 => random_lambda(context.deeper(), ValueType::random()),
-            _ => unreachable!(),
-        }
+    if context.depth > MAX_DEPTH {
+        random_num = random_range(0..2);
+    } else {
+        random_num = random_range(0..4);
+    }
+
+    match random_num {
+        0 => random_null(context.deeper()),
+        1 => random_number(context.deeper()),
+        2 => random_cons(
+            context.deeper(),
+            &(ValueType::random(), ValueType::random()),
+        ),
+        3 => random_lambda(context.deeper(), ValueType::random()),
+        _ => unreachable!(),
     }
 }
 
@@ -152,14 +160,14 @@ fn random_null(context: Context) -> Expression {
     }
 
     if context.depth > MAX_DEPTH {
-        Expression::Null
-    } else {
-        match random_num {
-            0 => Expression::Null,
-            1 => random_paren_expr(context.deeper(), &ValueType::Null),
-            2 => random_expr(context.deeper()),
-            _ => unreachable!(),
-        }
+        random_num = 0;
+    }
+
+    match random_num {
+        0 => Expression::Null,
+        1 => random_paren_expr(context.deeper(), &ValueType::Null),
+        2 => random_expr(context.deeper()),
+        _ => unreachable!(),
     }
 }
 
@@ -173,17 +181,18 @@ fn random_number(context: Context) -> Expression {
     }
 
     if context.depth > MAX_DEPTH {
-        Expression::Number(random_range(0..100) as isize)
-    } else {
-        match random_num {
-            0 => Expression::Number(random_range(0..100) as isize),
-            1 => random_paren_expr(context.deeper(), &ValueType::Number),
-            _ => unreachable!(),
-        }
+        random_num = 0;
+    }
+
+    match random_num {
+        0 => Expression::Number(random_range(0..100) as isize),
+        1 => random_paren_expr(context.deeper(), &ValueType::Number),
+        _ => unreachable!(),
     }
 }
 
 fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Expression {
+    eprintln!("random_cons: {}", context.depth);
     let mut random_num = random_range(0..10);
     if random_num >= 2 {
         if let Some(ident) = context.random_with_type(&ValueType::Cons((
@@ -212,22 +221,6 @@ fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Ex
     }
 }
 
-fn random_bool(context: Context) -> Expression {
-    let mut random_num = random_range(0..10);
-    if random_num >= 2 {
-        if let Some(boolean) = context.random_with_type(&ValueType::Boolean) {
-            return Expression::Identifier(boolean.to_string());
-        }
-        random_num = random_range(0..2);
-    }
-
-    match random_num {
-        0 => random_number(context.deeper()),
-        1 => random_null(context.deeper()),
-        _ => unreachable!(),
-    }
-}
-
 fn random_lambda(context: Context, target_type: ValueType) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 2 {
@@ -237,6 +230,10 @@ fn random_lambda(context: Context, target_type: ValueType) -> Expression {
             return Expression::Identifier(lambda.to_string());
         }
         random_num = random_range(0..2);
+    }
+
+    if context.depth > MAX_DEPTH {
+        random_num = 0;
     }
 
     match random_num {
@@ -274,41 +271,35 @@ fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expressio
     let random_target = target_type.random_expr_fn();
     context = context.deeper();
 
-    let range = if matches!(
-        target_type,
-        ValueType::Null | ValueType::Number | ValueType::Boolean
-    ) {
+    let range = if matches!(target_type, ValueType::Null | ValueType::Number) {
         if context.depth > MAX_DEPTH {
             0..10
         } else {
-            0..15
+            0..20
         }
     } else {
-        10..15
+        10..20
     };
 
     match random_range(range) {
-        // number / boolean
+        // number
         0 => random_two_arg_parexpr!(Plus, context),
         1 => random_two_arg_parexpr!(Minus, context),
         2 => random_two_arg_parexpr!(Times, context),
         3 => random_two_arg_parexpr!(Equals, context),
         4 => random_two_arg_parexpr!(LessThan, context),
         5 => random_two_arg_parexpr!(GreaterThan, context),
-        6 => Expression::Paren(Box::new(ParenExpression::LogicalAnd {
-            first: Box::new(random_bool(context.clone())),
-            second: Box::new(random_bool(context)),
-        })),
+        6 => random_two_arg_parexpr!(LogicalAnd, context),
         7 => random_two_arg_parexpr!(LogicalOr, context),
         8 => Expression::Paren(Box::new(ParenExpression::LogicalNot {
-            value: Box::new(random_bool(context)),
+            value: Box::new(random_number(context)),
         })),
         9 => Expression::Paren(Box::new(ParenExpression::NullCheck {
             value: Box::new(random_null(context)),
         })),
         // any type
         10 => Expression::Paren(Box::new(ParenExpression::Condition {
-            predicate: Box::new(random_bool(context.clone())),
+            predicate: Box::new(random_number(context.clone())),
             yes: Box::new(random_target(context.clone())),
             no: Box::new(random_target(context)),
         })),
@@ -331,11 +322,11 @@ fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expressio
         })),
         13 => Expression::Paren(Box::new(ParenExpression::Cdr {
             cons: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(random_target(context.clone())),
-                cdr: Box::new(random_expr(context))
+                car: Box::new(random_expr(context.clone())),
+                cdr: Box::new(random_target(context))
             }),
         })),
-        14 => Expression::Paren(Box::new(ParenExpression::Application {
+        14..20 => Expression::Paren(Box::new(ParenExpression::Application {
             lambda: Box::new(random_lambda(context.clone(), target_type.clone())),
             argument: Box::new(random_target(context)),
         })),
@@ -347,13 +338,15 @@ fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expressio
 mod tests {
     use std::fs;
 
-    use crate::{interpreter::interpret, randprog::random_ast};
+    use crate::{
+        interpreter::interpret, parser::parse, randprog::random_program, tokeniser::tokenise,
+    };
 
     #[test]
     fn test_random_program() {
-        let program = random_ast();
-        fs::write("/tmp/lastprog", format!("{program:#?}")).unwrap();
-        let result = interpret(program).unwrap();
+        let program = random_program();
+        fs::write("/tmp/lastprog", &program).unwrap();
+        let result = interpret(parse(tokenise(&program).unwrap()).unwrap()).unwrap();
         println!("{result}");
     }
 }
