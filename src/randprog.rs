@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 // TODO remove this for something lighter
 use rand::random_range;
@@ -8,7 +8,7 @@ use crate::ast::{Expression, ParenExpression};
 const MAX_DEPTH: usize = 10;
 
 /// Represents the different types of value an expression can evaluate to.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum ValueType {
     Null,
     Number,
@@ -33,17 +33,17 @@ impl ValueType {
 
     /// Returns a pointer to a function which, when called, will produce a random
     /// expression of this value type.
-    fn random_expr_fn(&self) -> Box<dyn Fn(Context) -> Expression + '_> {
+    fn random_expr_fn(&self) -> Box<dyn Fn(&mut Context) -> Expression + '_> {
         match self {
-            ValueType::Null => Box::new(random_null) as Box<dyn Fn(Context) -> Expression>,
-            ValueType::Number => Box::new(random_number) as Box<dyn Fn(Context) -> Expression>,
-            ValueType::Cons((car_target, cdr_target)) => Box::new(|context| {
+            ValueType::Null => Box::new(random_null) as Box<dyn Fn(&mut Context) -> Expression>,
+            ValueType::Number => Box::new(random_number) as Box<dyn Fn(&mut Context) -> Expression>,
+            ValueType::Cons((car_target, cdr_target)) => Box::new(|context: &mut Context| {
                 random_cons(context, &(*car_target.clone(), *cdr_target.clone()))
             })
-                as Box<dyn Fn(Context) -> Expression>,
+                as Box<dyn Fn(&mut Context) -> Expression>,
             ValueType::Lambda(target_type) => {
-                Box::new(|context| random_lambda(context, *target_type.clone()))
-                    as Box<dyn Fn(Context) -> Expression>
+                Box::new(|context: &mut Context| random_lambda(context, *target_type.clone()))
+                    as Box<dyn Fn(&mut Context) -> Expression>
             }
         }
     }
@@ -52,7 +52,7 @@ impl ValueType {
 #[derive(Clone)]
 struct Context {
     ident_value_types: HashMap<String, ValueType>,
-    value_type_idents: HashMap<ValueType, Vec<String>>,
+    value_type_idents: HashMap<ValueType, HashSet<String>>,
     depth: usize,
 }
 
@@ -64,22 +64,50 @@ impl Context {
 
         match self.value_type_idents.entry(value_type) {
             Entry::Vacant(entry) => {
-                entry.insert(vec![ident]);
+                entry.insert(HashSet::from([ident]));
             }
             Entry::Occupied(mut entry) => {
-                entry.get_mut().push(ident);
+                entry.get_mut().insert(ident);
             }
         }
     }
 
+    /// Unbind an identifier.
+    fn unbind(&mut self, ident: &str) {
+        let Some(value_type) = self.ident_value_types.remove(ident) else {
+            panic!("Tried to unbind an unbound identifier {ident}.");
+        };
+
+        let Some(idents) = self.value_type_idents.get_mut(&value_type) else {
+            panic!(
+                "While unbinding ident, there were no idents for the value type. {ident}, {value_type:?}"
+            );
+        };
+
+        idents.remove(ident);
+    }
+
     /// Return any random identifier.
     fn random_ident(&self) -> Option<&str> {
-        for idents in self.value_type_idents.values() {
-            if !idents.is_empty() {
-                return Some(&idents[random_range(0..idents.len())]);
+        let nonempty_vtypes: Vec<_> = self
+            .value_type_idents
+            .iter()
+            .filter(|(_, idents)| !idents.is_empty())
+            .collect();
+
+        if nonempty_vtypes.is_empty() {
+            return None;
+        }
+
+        let (_, random_idents) = nonempty_vtypes[random_range(0..nonempty_vtypes.len())];
+        let random_idx = random_range(0..random_idents.len());
+        for (idx, ident) in random_idents.iter().enumerate() {
+            if idx == random_idx {
+                return Some(ident);
             }
         }
-        None
+
+        panic!("Failed to choose a random identifier even though there were some to choose from.")
     }
 
     /// Return a random identifier with the given `ValueType`.
@@ -87,15 +115,30 @@ impl Context {
         if let Some(idents) = self.value_type_idents.get(value_type)
             && !idents.is_empty()
         {
-            Some(&idents[random_range(0..idents.len())])
+            let random_idx = random_range(0..idents.len());
+            for (idx, ident) in idents.iter().enumerate() {
+                if idx == random_idx {
+                    return Some(ident);
+                }
+            }
+
+            panic!(
+                "Failed to choose a random identifier even though there were some to choose from."
+            )
         } else {
             None
         }
     }
 
-    /// Return a new `Context` with an increased depth.
-    fn deeper(mut self) -> Self {
+    /// Return the mutable reference to `Context` with an increased depth.
+    fn deeper(&mut self) -> &mut Self {
         self.depth += 1;
+        self
+    }
+
+    /// Return the mutable reference to `Context` with an decreeased depth.
+    fn shallower(&mut self) -> &mut Self {
+        self.depth -= 1;
         self
     }
 }
@@ -107,24 +150,24 @@ pub fn random_program() -> String {
 
 /// Produces a random AST for a valid minilisp program.
 pub fn random_ast() -> Expression {
-    let context = Context {
+    let mut context = Context {
         value_type_idents: HashMap::new(),
         ident_value_types: HashMap::new(),
-        depth: 0,
+        depth: 1,
     };
 
-    match random_range(0..3) {
-        0 => random_null(context.deeper()),
-        1 => random_number(context.deeper()),
-        2 => random_cons(
-            context.deeper(),
-            &(ValueType::random(), ValueType::random()),
-        ),
+    let ast = match random_range(0..3) {
+        0 => random_null(&mut context),
+        1 => random_number(&mut context),
+        2 => random_cons(&mut context, &(ValueType::random(), ValueType::random())),
         _ => unreachable!(),
-    }
+    };
+
+    assert_eq!(context.depth, 1);
+    ast
 }
 
-fn random_expr(context: Context) -> Expression {
+fn random_expr(context: &mut Context) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 4
         && let Some(ident) = context.random_ident()
@@ -138,7 +181,7 @@ fn random_expr(context: Context) -> Expression {
         random_num = random_range(0..4);
     }
 
-    match random_num {
+    let expr = match random_num {
         0 => random_null(context.deeper()),
         1 => random_number(context.deeper()),
         2 => random_cons(
@@ -147,10 +190,13 @@ fn random_expr(context: Context) -> Expression {
         ),
         3 => random_lambda(context.deeper(), ValueType::random()),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    expr
 }
 
-fn random_null(context: Context) -> Expression {
+fn random_null(context: &mut Context) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 3 {
         if let Some(ident) = context.random_with_type(&ValueType::Null) {
@@ -163,15 +209,19 @@ fn random_null(context: Context) -> Expression {
         random_num = 0;
     }
 
-    match random_num {
+    context.deeper();
+    let nullable = match random_num {
         0 => Expression::Null,
-        1 => random_paren_expr(context.deeper(), &ValueType::Null),
-        2 => random_expr(context.deeper()),
+        1 => random_paren_expr(context, &ValueType::Null),
+        2 => random_expr(context),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    nullable
 }
 
-fn random_number(context: Context) -> Expression {
+fn random_number(context: &mut Context) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 2 {
         if let Some(ident) = context.random_with_type(&ValueType::Number) {
@@ -184,15 +234,18 @@ fn random_number(context: Context) -> Expression {
         random_num = 0;
     }
 
-    match random_num {
+    context.deeper();
+    let number = match random_num {
         0 => Expression::Number(random_range(0..100) as isize),
-        1 => random_paren_expr(context.deeper(), &ValueType::Number),
+        1 => random_paren_expr(context, &ValueType::Number),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    number
 }
 
-fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Expression {
-    eprintln!("random_cons: {}", context.depth);
+fn random_cons(context: &mut Context, target_type: &(ValueType, ValueType)) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 2 {
         if let Some(ident) = context.random_with_type(&ValueType::Cons((
@@ -204,10 +257,10 @@ fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Ex
         random_num = random_range(0..2);
     }
 
-    context = context.deeper();
-    match random_num {
+    context.deeper();
+    let cons = match random_num {
         0 => *boxparexpr!(ParenExpression::Cons {
-            car: Box::new(target_type.0.random_expr_fn()(context.clone())),
+            car: Box::new(target_type.0.random_expr_fn()(context)),
             cdr: Box::new(target_type.1.random_expr_fn()(context))
         }),
         1 => random_paren_expr(
@@ -218,10 +271,13 @@ fn random_cons(mut context: Context, target_type: &(ValueType, ValueType)) -> Ex
             )),
         ),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    cons
 }
 
-fn random_lambda(context: Context, target_type: ValueType) -> Expression {
+fn random_lambda(context: &mut Context, target_type: ValueType) -> Expression {
     let mut random_num = random_range(0..10);
     if random_num >= 2 {
         if let Some(lambda) =
@@ -236,14 +292,18 @@ fn random_lambda(context: Context, target_type: ValueType) -> Expression {
         random_num = 0;
     }
 
-    match random_num {
+    context.deeper();
+    let lambda = match random_num {
         0 => *boxparexpr!(ParenExpression::Lambda {
             arg: random_string(),
-            body: Box::new(target_type.random_expr_fn()(context.deeper()))
+            body: Box::new(target_type.random_expr_fn()(context))
         }),
-        1 => random_paren_expr(context.deeper(), &ValueType::Lambda(Box::new(target_type))),
+        1 => random_paren_expr(context, &ValueType::Lambda(Box::new(target_type))),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    lambda
 }
 
 fn random_string() -> String {
@@ -260,16 +320,16 @@ fn random_string() -> String {
 macro_rules! random_two_arg_parexpr {
     ($op_variant:ident, $context:expr) => {
         Expression::Paren(Box::new(ParenExpression::$op_variant {
-            first: Box::new(random_number($context.clone())),
+            first: Box::new(random_number($context)),
             second: Box::new(random_number($context)),
         }))
     };
 }
 
 // TODO maybe make context shared reference, just remove binding after subexpr complete
-fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expression {
+fn random_paren_expr(context: &mut Context, target_type: &ValueType) -> Expression {
     let random_target = target_type.random_expr_fn();
-    context = context.deeper();
+    context.deeper();
 
     let range = if matches!(target_type, ValueType::Null | ValueType::Number) {
         if context.depth > MAX_DEPTH {
@@ -281,7 +341,7 @@ fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expressio
         10..20
     };
 
-    match random_range(range) {
+    let paren_expr = match random_range(range) {
         // number
         0 => random_two_arg_parexpr!(Plus, context),
         1 => random_two_arg_parexpr!(Minus, context),
@@ -299,39 +359,45 @@ fn random_paren_expr(mut context: Context, target_type: &ValueType) -> Expressio
         })),
         // any type
         10 => Expression::Paren(Box::new(ParenExpression::Condition {
-            predicate: Box::new(random_number(context.clone())),
-            yes: Box::new(random_target(context.clone())),
+            predicate: Box::new(random_number(context)),
+            yes: Box::new(random_target(context)),
             no: Box::new(random_target(context)),
         })),
         11 => {
             let ident = random_string();
-            let value_expr = random_target(context.clone());
+            let value_expr = random_target(context);
             context.bind(ident.clone(), target_type.clone());
 
-            Expression::Paren(Box::new(ParenExpression::Binding {
-                name: ident,
+            let binding_expr = Expression::Paren(Box::new(ParenExpression::Binding {
+                name: ident.clone(),
                 value: Box::new(value_expr),
                 body: Box::new(random_target(context)),
-            }))
+            }));
+
+            context.unbind(&ident);
+            binding_expr
         }
         12 => Expression::Paren(Box::new(ParenExpression::Car {
             cons: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(random_target(context.clone())),
+                car: Box::new(random_target(context)),
                 cdr: Box::new(random_expr(context))
             }),
         })),
         13 => Expression::Paren(Box::new(ParenExpression::Cdr {
             cons: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(random_expr(context.clone())),
+                car: Box::new(random_expr(context)),
                 cdr: Box::new(random_target(context))
             }),
         })),
         14..20 => Expression::Paren(Box::new(ParenExpression::Application {
-            lambda: Box::new(random_lambda(context.clone(), target_type.clone())),
+            lambda: Box::new(random_lambda(context, target_type.clone())),
             argument: Box::new(random_target(context)),
         })),
         _ => unreachable!(),
-    }
+    };
+
+    context.shallower();
+    paren_expr
 }
 
 #[cfg(test)]
