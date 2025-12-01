@@ -82,7 +82,7 @@ impl Display for Value {
 
 /// Lazily interpret a recursive expression.
 pub fn interpret(expr: Expression) -> Result<Value> {
-    recurse(Box::new(expr), HashMap::new())?.eval()
+    interpret_expr(Box::new(expr), HashMap::new())?.eval()
 }
 
 /// Performs the provided two-argument numeric operation lazily.
@@ -93,8 +93,8 @@ fn two_arg_numeric_op(
     op: Box<dyn Fn(isize, isize) -> isize>,
     op_char: char,
 ) -> Result<Value> {
-    let first_val = recurse(first, idents.clone())?;
-    let second_val = recurse(second, idents)?;
+    let first_val = interpret_expr(first, idents.clone())?;
+    let second_val = interpret_expr(second, idents)?;
     Ok(Value::Application(Rc::new(move || {
         if let Value::Number(first_num) = first_val.clone().eval()?
             && let Value::Number(second_num) = second_val.clone().eval()?
@@ -110,9 +110,9 @@ fn two_arg_numeric_op(
 }
 
 #[allow(clippy::boxed_local)]
-fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
+fn interpret_expr(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
     match *expr {
-        Expression::Paren(parexpr) => recurse_parexpr(*parexpr, idents),
+        Expression::Paren(parexpr) => interpret_parexpr(*parexpr, idents),
         Expression::Null => Ok(Value::Null),
         Expression::Number(num) => Ok(Value::Number(num)),
         Expression::Identifier(ref ident) => {
@@ -129,7 +129,10 @@ fn recurse(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
 }
 
 #[allow(clippy::too_many_lines)]
-fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>) -> Result<Value> {
+fn interpret_parexpr(
+    parexpr: ParenExpression,
+    mut idents: HashMap<String, Value>,
+) -> Result<Value> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
             two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 + n1), '+')
@@ -148,10 +151,10 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             '=',
         ),
         ParenExpression::Condition { predicate, yes, no } => {
-            if recurse(predicate, idents.clone())?.truthy()? {
-                recurse(yes, idents)
+            if interpret_expr(predicate, idents.clone())?.truthy()? {
+                interpret_expr(yes, idents)
             } else {
-                recurse(no, idents)
+                interpret_expr(no, idents)
             }
         }
         ParenExpression::Lambda { arg, body } => Ok(Value::Lambda(Lambda {
@@ -159,19 +162,19 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             func: Rc::new(move |value| {
                 let mut local_idents = idents.clone();
                 local_idents.insert(arg.clone(), value);
-                recurse(body.clone(), local_idents)
+                interpret_expr(body.clone(), local_idents)
             }),
         })),
         ParenExpression::Binding { name, value, body } => {
-            idents.insert(name.clone(), recurse(value, idents.clone())?);
-            recurse(body, idents)
+            idents.insert(name.clone(), interpret_expr(value, idents.clone())?);
+            interpret_expr(body, idents)
         }
         ParenExpression::Cons { car, cdr } => Ok(Value::Cons((
-            Box::new(recurse(car, idents.clone())?),
-            Box::new(recurse(cdr, idents)?),
+            Box::new(interpret_expr(car, idents.clone())?),
+            Box::new(interpret_expr(cdr, idents)?),
         ))),
         ParenExpression::Car { cons } => {
-            let cons_val = recurse(cons, idents)?;
+            let cons_val = interpret_expr(cons, idents)?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
                     Ok(*cons_cell.0)
@@ -184,7 +187,7 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             })))
         }
         ParenExpression::Cdr { cons } => {
-            let cons_val = recurse(cons, idents)?;
+            let cons_val = interpret_expr(cons, idents)?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
                     Ok(*cons_cell.1)
@@ -197,7 +200,7 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             })))
         }
         ParenExpression::NullCheck { value } => {
-            let value = recurse(value, idents)?;
+            let value = interpret_expr(value, idents)?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Null = value.clone().eval()? {
                     Ok(Value::Number(1))
@@ -235,7 +238,7 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             '∨',
         ),
         ParenExpression::LogicalNot { value } => {
-            let value = recurse(value, idents.clone())?;
+            let value = interpret_expr(value, idents.clone())?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Number(value_num) = value.clone().eval()? {
                     Ok(Value::Number(isize::from(value_num == 0)))
@@ -248,8 +251,8 @@ fn recurse_parexpr(parexpr: ParenExpression, mut idents: HashMap<String, Value>)
             })))
         }
         ParenExpression::Application { lambda, argument } => {
-            let lambda_val = recurse(lambda, idents.clone())?;
-            let arg_val = recurse(argument, idents)?;
+            let lambda_val = interpret_expr(lambda, idents.clone())?;
+            let arg_val = interpret_expr(argument, idents)?;
 
             if let Value::Lambda(lambda) = lambda_val {
                 Ok(Value::Application(Rc::new(move || {
