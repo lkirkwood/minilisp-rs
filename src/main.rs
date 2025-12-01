@@ -1,13 +1,16 @@
 use std::{
+    env::Args,
     io::{BufRead, Read, stdin},
     process::exit,
 };
 
 use anyhow::Result;
+use compiler::compile;
 use randprog::random_program;
 
 #[macro_use]
 mod ast;
+mod compiler;
 mod interpreter;
 mod parser;
 mod randprog;
@@ -21,7 +24,31 @@ fn help() {
     eprintln!("\t                     If FILE is '-', the program will be read from stdin.\n");
     eprintln!("\t repl           --   Enter a primitive read-eval-print environment.");
     eprintln!("\t random         --   Generate a random minilisp program.");
+    eprintln!("\t compile        --   Compile a minilisp program to x86 assembly.");
     eprintln!("\t help           --   Print this message and exit.");
+}
+
+fn read_file(mut args: Args) -> Result<String> {
+    let Some(file) = args.next() else {
+        eprintln!("The run command requires a file as an argument.");
+        help();
+        exit(1);
+    };
+
+    if file == "-" {
+        let mut buf = Vec::new();
+        stdin().lock().read_to_end(&mut buf)?;
+        Ok(String::from_utf8(buf)?)
+    } else {
+        match std::fs::read_to_string(&file) {
+            Ok(program) => Ok(program),
+            Err(err) => {
+                eprintln!("Failed to read program at {file}: {err}\n\n");
+                help();
+                exit(1);
+            }
+        }
+    }
 }
 
 fn run(program: &str) -> Result<()> {
@@ -57,30 +84,19 @@ fn main() -> Result<()> {
             if arg == "help" {
                 help();
             } else if arg == "run" {
-                let Some(file) = args.next() else {
-                    eprintln!("The run command requires a file as an argument.");
-                    help();
-                    exit(1);
-                };
-
-                if file == "-" {
-                    let mut buf = Vec::new();
-                    stdin().lock().read_to_end(&mut buf)?;
-                    run(&String::from_utf8(buf)?)?;
-                } else {
-                    match std::fs::read_to_string(&file) {
-                        Ok(program) => run(&program)?,
-                        Err(err) => {
-                            eprintln!("Failed to read program at {file}: {err}\n\n");
-                            help();
-                            exit(1);
-                        }
-                    }
-                }
             } else if arg == "repl" {
                 run(&repl()?)?;
             } else if arg == "random" {
                 println!("{}", random_program());
+            } else if arg == "compile" {
+                let program = read_file(args)?;
+                let tokens = tokeniser::tokenise(&program)?;
+                let expression = parser::parse(tokens)?;
+                println!("{}", compile(expression));
+            } else {
+                eprintln!("Unrecognised command: {arg}.");
+                help();
+                exit(1);
             }
         }
     }
