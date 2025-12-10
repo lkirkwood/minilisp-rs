@@ -39,6 +39,16 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     }
 }
 
-fn compile_parexpr(_ctx: &mut Context, _parexpr: ParenExpression) -> Result<String> {
-    todo!("compile parexpr")
+fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
+    match parexpr {
+        ParenExpression::Plus { first, second } => Ok(format!(
+            "{}
+mov rbx, rax
+{}
+add rax, rbx",
+            compile_expr(ctx, *first)?,
+            compile_expr(ctx, *second)?
+        )),
+        other => todo!("compile other parexprs like {other:?}"),
+    }
 }
