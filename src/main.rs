@@ -92,7 +92,7 @@ fn main() -> Result<()> {
                 let program = read_file(args)?;
                 let tokens = tokeniser::tokenise(&program)?;
                 let expression = parser::parse(tokens)?;
-                println!("{}", compile(expression));
+                println!("{}", compile(expression)?);
             } else {
                 eprintln!("Unrecognised command: {arg}.");
                 help();
