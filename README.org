@@ -32,8 +32,8 @@ Factorial function using the Y combinator.
         (Y (λ f
             (λ n
                 (? n
-                    (× n (f (∸ n 1)))))))
-                    1
+                    (× n (f (∸ n 1)))
+                    1))))
         (factorial 5)))
 #+end_src
 
