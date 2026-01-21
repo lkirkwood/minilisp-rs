@@ -225,33 +225,20 @@ fn interpret_parexpr(
             Box::new(|n0, n1| isize::from(n0 > n1)),
             '›',
         ),
-        ParenExpression::LogicalAnd { first, second } => two_arg_numeric_op(
+        ParenExpression::Meet { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 != 0 && n1 != 0)),
+            Box::new(|n0, n1| isize::min(n0, n1)),
             '∧',
         ),
-        ParenExpression::LogicalOr { first, second } => two_arg_numeric_op(
+        ParenExpression::Join { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 != 0 || n1 != 0)),
+            Box::new(|n0, n1| isize::max(n0, n1)),
             '∨',
         ),
-        ParenExpression::LogicalNot { value } => {
-            let value = interpret_expr(value, idents.clone())?;
-            Ok(Value::Application(Rc::new(move || {
-                if let Value::Number(value_num) = value.clone().eval()? {
-                    Ok(Value::Number(isize::from(value_num == 0)))
-                } else {
-                    bail!(
-                        "The program must be invalid, because you can't use \
-                                ¬ on a non-numeric value."
-                    )
-                }
-            })))
-        }
         ParenExpression::Application { lambda, argument } => {
             let lambda_val = interpret_expr(lambda, idents.clone())?;
             let arg_val = interpret_expr(argument, idents)?;
@@ -412,22 +399,22 @@ mod tests {
 
     #[test]
     fn interpret_logic_1() {
-        assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 0)))"), Value::Number(1));
+        assert_eq!(interpret_str("(∧ 1 (∨ 0 42))"), Value::Number(1));
     }
 
     #[test]
     fn interpret_logic_2() {
-        assert_eq!(interpret_str("(∧ 1 (∨ 0 (¬ 1)))"), Value::Number(0));
+        assert_eq!(interpret_str("(∧ 1 (∨ 0 0))"), Value::Number(0));
     }
 
     #[test]
     fn interpret_logic_3() {
-        assert_eq!(interpret_str("(∧ 1 (∨ 1 (¬ 1)))"), Value::Number(1));
+        assert_eq!(interpret_str("(∧ 42 (∨ 1 0))"), Value::Number(1));
     }
 
     #[test]
     fn interpret_logic_4() {
-        assert_eq!(interpret_str("(∧ 0 (∨ 1 (¬ 1)))"), Value::Number(0));
+        assert_eq!(interpret_str("(∧ 0 (∨ 1 42))"), Value::Number(0));
     }
 
     #[test]
@@ -563,11 +550,6 @@ mod tests {
     #[test]
     fn interpret_cdr_non_cons() {
         assert!(interpret(parse(tokenise("(→ 42)").unwrap()).unwrap()).is_err());
-    }
-
-    #[test]
-    fn interpret_lnot_non_numeric() {
-        assert!(interpret(parse(tokenise("(¬ ∅)").unwrap()).unwrap()).is_err());
     }
 
     #[test]

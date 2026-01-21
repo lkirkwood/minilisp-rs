@@ -45,9 +45,8 @@ impl TryFrom<Token> for BoxExpr {
             | Token::NullCheck
             | Token::LessThan
             | Token::GreaterThan
-            | Token::LogicalAnd
-            | Token::LogicalOr
-            | Token::LogicalNot => {
+            | Token::Meet
+            | Token::Join => {
                 bail!("Not a token that can be converted to an expression directly: {value:?}")
             }
         }
@@ -128,16 +127,13 @@ pub enum ParenExpression {
         first: BoxExpr,
         second: BoxExpr,
     },
-    LogicalAnd {
+    Meet {
         first: BoxExpr,
         second: BoxExpr,
     },
-    LogicalOr {
+    Join {
         first: BoxExpr,
         second: BoxExpr,
-    },
-    LogicalNot {
-        value: BoxExpr,
     },
     Application {
         lambda: BoxExpr,
@@ -204,14 +200,11 @@ impl From<ParenExpression> for String {
             ParenExpression::GreaterThan { first, second } => {
                 two_arg_parexpr_to_string('›', *first, *second)
             }
-            ParenExpression::LogicalAnd { first, second } => {
+            ParenExpression::Meet { first, second } => {
                 two_arg_parexpr_to_string('∧', *first, *second)
             }
-            ParenExpression::LogicalOr { first, second } => {
+            ParenExpression::Join { first, second } => {
                 two_arg_parexpr_to_string('∨', *first, *second)
-            }
-            ParenExpression::LogicalNot { value } => {
-                format!("(¬ {})", String::from(*value))
             }
             ParenExpression::Application { lambda, argument } => {
                 format!("({} {})", String::from(*lambda), String::from(*argument))
@@ -313,8 +306,8 @@ impl ParenExprBuilder {
             | Token::Cons
             | Token::LessThan
             | Token::GreaterThan
-            | Token::LogicalAnd
-            | Token::LogicalOr => {
+            | Token::Meet
+            | Token::Join => {
                 self.terms.push(expr);
                 if self.terms.len() == 2 {
                     self.terms_finished = true;
@@ -360,7 +353,7 @@ impl ParenExprBuilder {
                     }
                 }
             }
-            Token::Car | Token::Cdr | Token::NullCheck | Token::LogicalNot => {
+            Token::Car | Token::Cdr | Token::NullCheck => {
                 self.terms.push(expr);
                 if self.terms.len() == 1 {
                     self.terms_finished = true;
@@ -519,22 +512,11 @@ impl ParenExprBuilder {
             Token::GreaterThan => {
                 build_two_arg_parexpr!(self.terms, GreaterThan)
             }
-            Token::LogicalAnd => {
-                build_two_arg_parexpr!(self.terms, LogicalAnd)
+            Token::Meet => {
+                build_two_arg_parexpr!(self.terms, Meet)
             }
-            Token::LogicalOr => {
-                build_two_arg_parexpr!(self.terms, LogicalOr)
-            }
-            Token::LogicalNot => {
-                if self.terms.len() != 1 {
-                    bail!(
-                        "Something went wrong internally; tried to build a logical \"not\" expression \
-                         with {} terms instead of 1.",
-                        self.terms.len()
-                    )
-                }
-                let value = self.terms.pop().unwrap();
-                Ok(boxparexpr!(ParenExpression::LogicalNot { value }))
+            Token::Join => {
+                build_two_arg_parexpr!(self.terms, Join)
             }
             Token::RightParen | Token::Null | Token::Number(_) => bail!(
                 "Something went wrong internally; can't finish a paren expression \

@@ -48,9 +48,8 @@ impl From<Token> for Terminal {
             Token::Null => Self::Null,
             Token::LessThan => Self::LessThan,
             Token::GreaterThan => Self::GreaterThan,
-            Token::LogicalAnd => Self::LogicalAnd,
-            Token::LogicalOr => Self::LogicalOr,
-            Token::LogicalNot => Self::LogicalNot,
+            Token::Meet => Self::LogicalAnd,
+            Token::Join => Self::LogicalOr,
         }
     }
 }

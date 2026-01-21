@@ -20,9 +20,8 @@ pub enum Token {
     Null,
     LessThan,
     GreaterThan,
-    LogicalAnd,
-    LogicalOr,
-    LogicalNot,
+    Meet,
+    Join,
 }
 
 enum BufferedType {
@@ -81,9 +80,8 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             '∘' => tokens.push(Token::NullCheck),
             '‹' => tokens.push(Token::LessThan),
             '›' => tokens.push(Token::GreaterThan),
-            '∧' => tokens.push(Token::LogicalAnd),
-            '∨' => tokens.push(Token::LogicalOr),
-            '¬' => tokens.push(Token::LogicalNot),
+            '∧' => tokens.push(Token::Meet),
+            '∨' => tokens.push(Token::Join),
             '0'..='9' => {
                 if buf_type.is_none() {
                     buf_type = Some(BufferedType::Number);
@@ -188,7 +186,7 @@ mod tests {
                 Token::RightParen,
                 Token::RightParen,
                 Token::LeftParen,
-                Token::LogicalOr,
+                Token::Join,
                 Token::LeftParen,
                 Token::NullCheck,
                 Token::LeftParen,

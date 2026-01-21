@@ -349,21 +349,18 @@ fn random_paren_expr(context: &mut Context, target_type: &ValueType) -> Expressi
         3 => random_two_arg_parexpr!(Equals, context),
         4 => random_two_arg_parexpr!(LessThan, context),
         5 => random_two_arg_parexpr!(GreaterThan, context),
-        6 => random_two_arg_parexpr!(LogicalAnd, context),
-        7 => random_two_arg_parexpr!(LogicalOr, context),
-        8 => Expression::Paren(Box::new(ParenExpression::LogicalNot {
-            value: Box::new(random_number(context)),
-        })),
-        9 => Expression::Paren(Box::new(ParenExpression::NullCheck {
+        6 => random_two_arg_parexpr!(Meet, context),
+        7 => random_two_arg_parexpr!(Join, context),
+        8 => Expression::Paren(Box::new(ParenExpression::NullCheck {
             value: Box::new(random_null(context)),
         })),
         // any type
-        10 => Expression::Paren(Box::new(ParenExpression::Condition {
+        9 => Expression::Paren(Box::new(ParenExpression::Condition {
             predicate: Box::new(random_number(context)),
             yes: Box::new(random_target(context)),
             no: Box::new(random_target(context)),
         })),
-        11 => {
+        10 => {
             let ident = random_string();
             let value_expr = random_target(context);
             context.bind(ident.clone(), target_type.clone());
@@ -377,19 +374,19 @@ fn random_paren_expr(context: &mut Context, target_type: &ValueType) -> Expressi
             context.unbind(&ident);
             binding_expr
         }
-        12 => Expression::Paren(Box::new(ParenExpression::Car {
+        11 => Expression::Paren(Box::new(ParenExpression::Car {
             cons: boxparexpr!(ParenExpression::Cons {
                 car: Box::new(random_target(context)),
                 cdr: Box::new(random_expr(context))
             }),
         })),
-        13 => Expression::Paren(Box::new(ParenExpression::Cdr {
+        12 => Expression::Paren(Box::new(ParenExpression::Cdr {
             cons: boxparexpr!(ParenExpression::Cons {
                 car: Box::new(random_expr(context)),
                 cdr: Box::new(random_target(context))
             }),
         })),
-        14..20 => Expression::Paren(Box::new(ParenExpression::Application {
+        13..20 => Expression::Paren(Box::new(ParenExpression::Application {
             lambda: Box::new(random_lambda(context, target_type.clone())),
             argument: Box::new(random_target(context)),
         })),

@@ -247,14 +247,12 @@ mod tests {
     #[test]
     fn parse_logic() {
         assert_eq!(
-            parse(tokenise("(∧ 1 (∨ 0 (¬ 0)))").unwrap()).unwrap(),
-            *boxparexpr!(ParenExpression::LogicalAnd {
+            parse(tokenise("(∧ 1 (∨ 0 42))").unwrap()).unwrap(),
+            *boxparexpr!(ParenExpression::Meet {
                 first: Box::new(Expression::Number(1)),
-                second: boxparexpr!(ParenExpression::LogicalOr {
+                second: boxparexpr!(ParenExpression::Join {
                     first: Box::new(Expression::Number(0)),
-                    second: boxparexpr!(ParenExpression::LogicalNot {
-                        value: Box::new(Expression::Number(0))
-                    })
+                    second: Box::new(Expression::Number(42))
                 })
             })
         );
@@ -274,7 +272,7 @@ mod tests {
                         cdr: Box::new(Expression::Null)
                     })
                 }),
-                body: boxparexpr!(ParenExpression::LogicalOr {
+                body: boxparexpr!(ParenExpression::Join {
                     first: boxparexpr!(ParenExpression::NullCheck {
                         value: boxparexpr!(ParenExpression::Car {
                             cons: Box::new(Expression::Identifier("lst".to_string()))

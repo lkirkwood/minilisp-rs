@@ -91,6 +91,8 @@ List length.
 | ←      | U+2190  | Car (first element)     | ~(← (∷ 1 2)) → 1~      |
 | →      | U+2192  | Cdr (second element)    | ~(→ (∷ 1 2)) → 2~      |
 | ∘      | U+2218  | Null check              | ~(∘ ∅) → 1~            |
+| ∧      | U+2227  | Meet (minimum)          | ~(∧ 42 0) → 0~         |
+| ∨      | U+2227  | Join (maximum)          | ~(∨ 42 0) → 42~        |
 |--------+---------+-------------------------+------------------------|
 
 *** Grammar
@@ -101,7 +103,8 @@ paren-expr ::= '+' expr expr | '−' expr expr | '×' expr expr
                 | '=' expr expr       | '?' expr expr expr
                 | 'λ' identifier expr | '≜' identifier expr expr
                 | '∅' | '∷' expr expr | '←' expr | '→' expr
-                | '∘' expr | expr expr
+                | '∘' expr | '∧' expr expr | '∨' expr expr
+                | expr expr
 #+end_src
 
 The final ~paren-expr~ form, ~'(' expr expr ')'~, is the application of a lambda (the first ~expr~) with an argument.
