@@ -9,7 +9,7 @@ pub enum Terminal {
     Number,
     Identifier,
     Plus,
-    Minus,
+    Monus,
     Times,
     Equals,
     Condition,
@@ -35,7 +35,7 @@ impl From<Token> for Terminal {
             Token::Number(_) => Self::Number,
             Token::Identifier(_) => Self::Identifier,
             Token::Plus => Self::Plus,
-            Token::Minus => Self::Minus,
+            Token::Monus => Self::Monus,
             Token::Times => Self::Times,
             Token::Equals => Self::Equals,
             Token::Condition => Self::Condition,
@@ -113,10 +113,10 @@ pub static TRANSITION_TABLE: LazyLock<HashMap<(Terminal, NonTerminal), Vec<Stack
                 (Terminal::Plus, NonTerminal::ParenExpression),
                 vec![term!(Plus), nonterm!(Expression), nonterm!(Expression)],
             ),
-            // paren expression -> minus
+            // paren expression -> monus
             (
-                (Terminal::Minus, NonTerminal::ParenExpression),
-                vec![term!(Minus), nonterm!(Expression), nonterm!(Expression)],
+                (Terminal::Monus, NonTerminal::ParenExpression),
+                vec![term!(Monus), nonterm!(Expression), nonterm!(Expression)],
             ),
             // paren expression -> times
             (

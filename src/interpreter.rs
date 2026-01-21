@@ -138,9 +138,13 @@ fn interpret_parexpr(
         ParenExpression::Plus { first, second } => {
             two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 + n1), '+')
         }
-        ParenExpression::Minus { first, second } => {
-            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 - n1), '−')
-        }
+        ParenExpression::Monus { first, second } => two_arg_numeric_op(
+            first,
+            second,
+            idents,
+            Box::new(|n0, n1| isize::max(n0 - n1, 0)),
+            '∸',
+        ),
         ParenExpression::Times { first, second } => {
             two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 * n1), '×')
         }
@@ -345,8 +349,18 @@ mod tests {
     }
 
     #[test]
+    fn interpret_monus() {
+        assert_eq!(interpret_str("(∸ 43 1)"), Value::Number(42));
+    }
+
+    #[test]
+    fn interpret_monus_bounded() {
+        assert_eq!(interpret_str("(∸ 0 42)"), Value::Number(0));
+    }
+
+    #[test]
     fn interpret_arithmetic() {
-        assert_eq!(interpret_str("(+ (× 1 42) (− 42 0))"), Value::Number(84));
+        assert_eq!(interpret_str("(+ (× 1 42) (∸ 42 0))"), Value::Number(84));
     }
 
     #[test]
@@ -492,7 +506,7 @@ mod tests {
                             (λ n
                                 (? (= n 0)
                                     1
-                                    (× n (f (− n 1)))))))
+                                    (× n (f (∸ n 1)))))))
                         (factorial 5)))"
             ),
             Value::Number(120)
@@ -511,7 +525,7 @@ mod tests {
                                 0
                                 (? (= n 1)
                                     1
-                                    (+ (f (− n 1)) (f (− n 2))))))))
+                                    (+ (f (∸ n 1)) (f (∸ n 2))))))))
                         (fib 10)))"
             ),
             Value::Number(55)

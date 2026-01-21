@@ -7,7 +7,7 @@ pub enum Token {
     Number(isize),
     Identifier(String),
     Plus,
-    Minus,
+    Monus,
     Times,
     Equals,
     Condition,
@@ -67,7 +67,7 @@ pub fn tokenise(program_string: &str) -> Result<Vec<Token>> {
             }
             '(' => tokens.push(Token::LeftParen),
             '+' => tokens.push(Token::Plus),
-            '−' => tokens.push(Token::Minus),
+            '∸' => tokens.push(Token::Monus),
             '×' => tokens.push(Token::Times),
             '=' => tokens.push(Token::Equals),
             '?' => tokens.push(Token::Condition),
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn tokenise_arithmetic() {
         assert_eq!(
-            tokenise("(+ (× 1 42) (− 42 0))").unwrap(),
+            tokenise("(+ (× 1 42) (∸ 42 0))").unwrap(),
             vec![
                 Token::LeftParen,
                 Token::Plus,
@@ -140,7 +140,7 @@ mod tests {
                 Token::Number(42),
                 Token::RightParen,
                 Token::LeftParen,
-                Token::Minus,
+                Token::Monus,
                 Token::Number(42),
                 Token::Number(0),
                 Token::RightParen,
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn tokenise_binding() {
         assert_eq!(
-            tokenise("(≜ x 10 (+ x x)) ").unwrap(),
+            tokenise("(≜ x 10 (+ x x))").unwrap(),
             vec![
                 Token::LeftParen,
                 Token::Binding,

@@ -139,13 +139,13 @@ mod tests {
     #[test]
     fn parse_arithmetic() {
         assert_eq!(
-            parse(tokenise("(+ (× 1 42) (− 42 0))").unwrap()).unwrap(),
+            parse(tokenise("(+ (× 1 42) (∸ 42 0))").unwrap()).unwrap(),
             *boxparexpr!(ParenExpression::Plus {
                 first: boxparexpr!(ParenExpression::Times {
                     first: Box::new(Expression::Number(1)),
                     second: Box::new(Expression::Number(42))
                 }),
-                second: boxparexpr!(ParenExpression::Minus {
+                second: boxparexpr!(ParenExpression::Monus {
                     first: Box::new(Expression::Number(42)),
                     second: Box::new(Expression::Number(0))
                 })

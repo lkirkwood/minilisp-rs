@@ -74,32 +74,32 @@ List length.
 
 ** Specification
 *** Tokens
-|--------+---------+-------------------------+------------------------|
-| Symbol | Unicode | Name                    | Example                |
-|--------+---------+-------------------------+------------------------|
-| (      | U+0028  | Left paren              |                        |
-| )      | U+0029  | Right paren             |                        |
-| +      | U+002B  | Addition                | ~(+ 2 3) → 5~          |
-| −      | U+2212  | Subtraction             | ~(− 5 2) → 3~          |
-| ×      | U+00D7  | Multiplication          | ~(× 3 4) → 12~         |
-| =      | U+003D  | Equality                | ~(= 5 5) → 1~          |
-| ?      | U+003F  | Conditional             | ~(? 1 10 20) → 10~     |
-| λ      | U+03BB  | Lambda                  | ~(λ x (+ x 1))~        |
-| ≜      | U+225C  | Let binding             | ~(≜ x 5 (+ x x)) → 10~ |
-| ∅      | U+2205  | Nil (empty list)        | ~∅~                    |
-| ∷      | U+2237  | Cons (pair constructor) | ~(∷ 1 2)~              |
-| ←      | U+2190  | Car (first element)     | ~(← (∷ 1 2)) → 1~      |
-| →      | U+2192  | Cdr (second element)    | ~(→ (∷ 1 2)) → 2~      |
-| ∘      | U+2218  | Null check              | ~(∘ ∅) → 1~            |
-| ∧      | U+2227  | Meet (minimum)          | ~(∧ 42 0) → 0~         |
-| ∨      | U+2227  | Join (maximum)          | ~(∨ 42 0) → 42~        |
-|--------+---------+-------------------------+------------------------|
+|--------+---------+-----------------------------+------------------------|
+| Symbol | Unicode | Name                        | Example                |
+|--------+---------+-----------------------------+------------------------|
+| (      | U+0028  | Left paren                  |                        |
+| )      | U+0029  | Right paren                 |                        |
+| +      | U+002B  | Addition                    | ~(+ 2 3) → 5~          |
+| ∸      | U+2238  | Monus (bounded subtraction) | ~(∸ 5 2) → 3~          |
+| ×      | U+00D7  | Multiplication              | ~(× 3 4) → 12~         |
+| =      | U+003D  | Equality                    | ~(= 5 5) → 1~          |
+| ?      | U+003F  | Conditional                 | ~(? 1 10 20) → 10~     |
+| λ      | U+03BB  | Lambda                      | ~(λ x (+ x 1))~        |
+| ≜      | U+225C  | Let binding                 | ~(≜ x 5 (+ x x)) → 10~ |
+| ∅      | U+2205  | Nil (empty list)            | ~∅~                    |
+| ∷      | U+2237  | Cons (pair constructor)     | ~(∷ 1 2)~              |
+| ←      | U+2190  | Car (first element)         | ~(← (∷ 1 2)) → 1~      |
+| →      | U+2192  | Cdr (second element)        | ~(→ (∷ 1 2)) → 2~      |
+| ∘      | U+2218  | Null check                  | ~(∘ ∅) → 1~            |
+| ∧      | U+2227  | Meet (minimum)              | ~(∧ 42 0) → 0~         |
+| ∨      | U+2227  | Join (maximum)              | ~(∨ 42 0) → 42~        |
+|--------+---------+-----------------------------+------------------------|
 
 *** Grammar
 #+begin_src
 program    ::= expr
 expr       ::= number | identifier | '(' paren-expr ')'
-paren-expr ::= '+' expr expr | '−' expr expr | '×' expr expr
+paren-expr ::= '+' expr expr | '∸' expr expr | '×' expr expr
                 | '=' expr expr       | '?' expr expr expr
                 | 'λ' identifier expr | '≜' identifier expr expr
                 | '∅' | '∷' expr expr | '←' expr | '→' expr

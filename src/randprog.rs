@@ -344,7 +344,7 @@ fn random_paren_expr(context: &mut Context, target_type: &ValueType) -> Expressi
     let paren_expr = match random_range(range) {
         // number
         0 => random_two_arg_parexpr!(Plus, context),
-        1 => random_two_arg_parexpr!(Minus, context),
+        1 => random_two_arg_parexpr!(Monus, context),
         2 => random_two_arg_parexpr!(Times, context),
         3 => random_two_arg_parexpr!(Equals, context),
         4 => random_two_arg_parexpr!(LessThan, context),
