@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 pub enum Token {
     LeftParen,
     RightParen,
-    Number(isize),
+    Number(u64),
     Identifier(String),
     Plus,
     Monus,
@@ -40,7 +40,7 @@ fn flush_char_buf(
         let mut number = 0;
         for num_char in char_buf.iter() {
             number *= 10;
-            number += (*num_char as isize) - 48;
+            number += (*num_char as u64) - 48;
         }
         tokens.push(Token::Number(number));
     } else if let Some(BufferedType::Identifier) = buf_type {

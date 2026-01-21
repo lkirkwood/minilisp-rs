@@ -28,7 +28,7 @@ impl Lambda {
 /// These can be recursively computed using the `eval` function.
 pub enum Value {
     Null,
-    Number(isize),
+    Number(u64),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
     Application(Rc<dyn Fn() -> Result<Value>>),
@@ -91,7 +91,7 @@ fn two_arg_numeric_op(
     first: BoxExpr,
     second: BoxExpr,
     idents: HashMap<String, Value>,
-    op: Box<dyn Fn(isize, isize) -> isize>,
+    op: Box<dyn Fn(u64, u64) -> u64>,
     op_char: char,
 ) -> Result<Value> {
     let first_val = interpret_expr(first, idents.clone())?;
@@ -138,13 +138,9 @@ fn interpret_parexpr(
         ParenExpression::Plus { first, second } => {
             two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 + n1), '+')
         }
-        ParenExpression::Monus { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| isize::max(n0 - n1, 0)),
-            '∸',
-        ),
+        ParenExpression::Monus { first, second } => {
+            two_arg_numeric_op(first, second, idents, Box::new(u64::saturating_sub), '∸')
+        }
         ParenExpression::Times { first, second } => {
             two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 * n1), '×')
         }
@@ -152,7 +148,7 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 == n1)),
+            Box::new(|n0, n1| u64::from(n0 == n1)),
             '=',
         ),
         ParenExpression::Condition { predicate, yes, no } => {
@@ -219,30 +215,22 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 < n1)),
+            Box::new(|n0, n1| u64::from(n0 < n1)),
             '‹',
         ),
         ParenExpression::GreaterThan { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 > n1)),
+            Box::new(|n0, n1| u64::from(n0 > n1)),
             '›',
         ),
-        ParenExpression::Meet { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| isize::min(n0, n1)),
-            '∧',
-        ),
-        ParenExpression::Join { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| isize::max(n0, n1)),
-            '∨',
-        ),
+        ParenExpression::Meet { first, second } => {
+            two_arg_numeric_op(first, second, idents, Box::new(u64::min), '∧')
+        }
+        ParenExpression::Join { first, second } => {
+            two_arg_numeric_op(first, second, idents, Box::new(u64::max), '∨')
+        }
         ParenExpression::Application { lambda, argument } => {
             let lambda_val = interpret_expr(lambda, idents.clone())?;
             let arg_val = interpret_expr(argument, idents)?;

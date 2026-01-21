@@ -17,7 +17,7 @@ pub type BoxParenExpr = Box<ParenExpression>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expression {
-    Number(isize),
+    Number(u64),
     Identifier(String),
     Paren(BoxParenExpr),
     Null,
@@ -57,17 +57,7 @@ impl From<Expression> for String {
     fn from(value: Expression) -> Self {
         match value {
             Expression::Null => "∅".to_string(),
-            Expression::Number(num) => {
-                if num >= 0 {
-                    num.to_string()
-                } else {
-                    Expression::Paren(Box::new(ParenExpression::Monus {
-                        first: Box::new(Expression::Number(0)),
-                        second: Box::new(Expression::Number(num)),
-                    }))
-                    .into()
-                }
-            }
+            Expression::Number(num) => num.to_string(),
             Expression::Identifier(ident) => ident,
             Expression::Paren(parexpr) => String::from(*parexpr),
         }
