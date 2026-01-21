@@ -31,9 +31,9 @@ Factorial function using the Y combinator.
     (≜ factorial
         (Y (λ f
             (λ n
-                (? (= n 0)
+                (? n
+                    (× n (f (∸ n 1)))))))
                     1
-                    (× n (f (− n 1)))))))
         (factorial 5)))
 #+end_src
 
@@ -51,7 +51,7 @@ Fibonacci numbers using same.
                 0
                 (? (= n 1)
                     1
-                    (+ (f (− n 1)) (f (− n 2))))))))
+                    (+ (f (∸ n 1)) (f (∸ n 2))))))))
         (fib 10)))
 #+end_src
 

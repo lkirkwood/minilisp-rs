@@ -146,7 +146,7 @@ impl From<ParenExpression> for String {
                 two_arg_parexpr_to_string('+', *first, *second)
             }
             ParenExpression::Monus { first, second } => {
-                two_arg_parexpr_to_string('−', *first, *second)
+                two_arg_parexpr_to_string('∸', *first, *second)
             }
             ParenExpression::Times { first, second } => {
                 two_arg_parexpr_to_string('×', *first, *second)
