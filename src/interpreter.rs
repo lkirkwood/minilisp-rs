@@ -35,19 +35,6 @@ pub enum Value {
 }
 
 impl Value {
-    /// Tries to interpret the value as a boolean, performing lazy evaluation if necessary.
-    fn truthy(self) -> Result<bool> {
-        match self {
-            Self::Number(num) => Ok(num > 0),
-            Self::Null => Ok(false),
-            Self::Application(func) => (func)()?.truthy(),
-            Self::Lambda(_) | Self::Cons(_) => bail!(
-                "The program must be invalid, because you can't use a lambda \
-                or a cons cell as the predicate for a conditional."
-            ),
-        }
-    }
-
     /// Recursively force lazy computation on the current value until it is no longer a
     /// lambda application.
     fn eval(mut self) -> Result<Self> {
@@ -60,6 +47,14 @@ impl Value {
         }
 
         Ok(self)
+    }
+
+    /// Tries to interpret the value as a boolean, performing lazy evaluation if necessary.
+    fn truthy(self) -> Result<bool> {
+        match self.eval()? {
+            Self::Number(0) => Ok(false),
+            _ => Ok(true),
+        }
     }
 }
 
@@ -357,18 +352,18 @@ mod tests {
     }
 
     #[test]
-    fn interpret_conditional_null_falsy() {
-        assert_eq!(interpret_str("(? ∅ 10 20)"), Value::Number(20));
+    fn interpret_conditional_null_truthy() {
+        assert_eq!(interpret_str("(? ∅ 42 99)"), Value::Number(42));
     }
 
     #[test]
     fn interpret_conditional_lambda_predicate() {
-        assert!(interpret(parse(tokenise("(? (λ x (+ x 1)) 10 20)").unwrap()).unwrap()).is_err());
+        assert_eq!(interpret_str("(? (λ x (+ x 1)) 42 99)"), Value::Number(42));
     }
 
     #[test]
     fn interpret_conditional_cons_predicate() {
-        assert!(interpret(parse(tokenise("(? (∷ 42 ∅) 10 20)").unwrap()).unwrap()).is_err());
+        assert_eq!(interpret_str("(? (∷ 42 ∅) 42 99)"), Value::Number(42));
     }
 
     #[test]
