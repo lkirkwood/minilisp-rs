@@ -11,6 +11,8 @@ use crate::ast::{BoxExpr, Expression, ParenExpression};
 #[derive(Clone)]
 pub struct Lambda {
     arg: String,
+    /// So that the canonical representation can be printed.
+    body_expr: Expression,
     func: Rc<dyn Fn(Value) -> Result<Value>>,
 }
 
@@ -66,11 +68,10 @@ impl Display for Value {
         match self {
             Self::Null => write!(f, "∅"),
             Self::Number(num) => write!(f, "{num}"),
-            Self::Cons((val0, val1)) => write!(f, "({val0} {val1})"),
-            Self::Lambda(Lambda { arg, func }) => {
-                write!(f, "(λ \"{arg}\" - ")?;
-                func.fmt(f)?;
-                write!(f, ")")
+            Self::Cons((val0, val1)) => write!(f, "(∷ {val0} {val1})"),
+            Self::Lambda(Lambda { arg, body_expr, .. }) => {
+                let body: String = body_expr.to_owned().into();
+                write!(f, "(λ {arg} {body})")
             }
             Self::Application(func) => {
                 write!(f, "Lambda application of function at: ")?;
@@ -159,6 +160,7 @@ fn interpret_parexpr(
         }
         ParenExpression::Lambda { arg, body } => Ok(Value::Lambda(Lambda {
             arg: arg.clone(),
+            body_expr: *body.clone(),
             func: Rc::new(move |value| {
                 let mut local_idents = idents.clone();
                 local_idents.insert(arg.clone(), value);
