@@ -3,16 +3,26 @@ use std::collections::{HashMap, hash_map::Entry};
 use anyhow::{Result, bail};
 
 use crate::ast::{Expression, ParenExpression};
-// NOTE previous attempt stashed
 
-pub fn compile(program: Expression) -> Result<String> {
-    let instructions = compile_expr(&mut Context::default(), program)?;
+/// Format a string literal using format!, a leading \t, and a trailing \n.
+macro_rules! cmd {
+    ($cmd:expr $(, $arg:expr)*) => {
+        format!(concat!("\t", $cmd, "\n") $(, $arg)*)
+    };
+}
 
-    Ok(format!(
-        "global _start
+/// Join some strings with no separator.
+macro_rules! join {
+    ($first:expr $(, $others:expr)*) => {
+        vec![$first $(, $others)*].into_iter().collect::<String>()
+    }
+}
+
+const PRELUDE: &str = "
+global _start
 
 section .bss
-    output resb 8
+   output resb 8
 
 section .text
 _start:
@@ -20,9 +30,11 @@ _start:
     mov rbp, rsp
 
     ;; generated instructions
-{instructions}
+";
 
-    ;; printing result and exiting
+const PRINT_RAX_AND_EXIT: &str = "
+
+   ;; printing result and exiting
     mov [output], rax
     mov rax, 1
     mov rdi, 1
@@ -32,8 +44,13 @@ _start:
 
     mov rax, 60
     xor rdi, rdi
-    syscall"
-    ))
+    syscall
+";
+
+pub fn compile(program: Expression) -> Result<String> {
+    let instructions = compile_expr(&mut Context::default(), program)?;
+
+    Ok(join!(PRELUDE, &instructions, PRINT_RAX_AND_EXIT))
 }
 
 #[derive(Default)]
@@ -70,8 +87,8 @@ impl Context {
 
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
-        Expression::Number(num) => Ok(format!("    mov rax, {num}")),
-        Expression::Identifier(ident) => Ok(format!("    mov rax, {}", ctx.get(&ident)?)),
+        Expression::Number(num) => Ok(cmd!("mov rax, {}", num)),
+        Expression::Identifier(ident) => Ok(cmd!("    mov rax, {}", ctx.get(&ident)?)),
         Expression::Null => todo!("encoding for null"),
         Expression::Paren(parexpr) => compile_parexpr(ctx, *parexpr),
     }
@@ -79,15 +96,12 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
-        ParenExpression::Plus { first, second } => Ok(format!(
-            "\
-{}
-    mov rbx, rax
-{}
-    add rax, rbx",
-            compile_expr(ctx, *first)?,
-            compile_expr(ctx, *second)?
-        )),
+        ParenExpression::Plus { first, second } => Ok(join![
+            cmd!("{}", compile_expr(ctx, *first)?),
+            cmd!("mov rbx, rax"),
+            cmd!("{}", compile_expr(ctx, *second)?),
+            cmd!("add rax, rbx")
+        ]),
         // Need to know the address where the value will be stored so that
         // we can map ident to that address. Problem is we can't reserve memory
         // upfront because we don't know the size of the value until it is
@@ -99,9 +113,14 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         // value.
         ParenExpression::Binding { name, value, body } => {
             let value_code = compile_expr(ctx, *value)?;
-            let addr = ctx.bind(name);
+            let addr = ctx.bind(name.clone());
             let body_code = compile_expr(ctx, *body)?;
-            Ok(format!("{value_code}\n\tmov {addr}, rax\n{body_code}"))
+            Ok(join![
+                cmd!(";; binding {}", name),
+                value_code,
+                cmd!("mov {}, rax", addr),
+                body_code
+            ])
         }
         other => todo!("compile other parexprs like {other:?}"),
     }
