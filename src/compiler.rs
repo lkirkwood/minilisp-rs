@@ -185,14 +185,18 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             let addr = ctx.stack_allocate(8);
             Ok(join![
                 cmd!("; begin plus"),
+                cmd!("; compute first plus operand"),
                 first,
-                cmd!("mov {}, retval", addr),
-                second,
-                cmd!("mov rdi, {}", addr),
-                cmd!("mov rax, [rdi]"),
-                cmd!("add rax, [retval]"),
+                cmd!("; store first plus operand"),
+                cmd!("sub rsp, 8"),
+                cmd!("mov rax, [retval]"),
                 cmd!("mov {}, rax", addr),
-                cmd!("mov retval, {}", addr),
+                cmd!("; compute second plus operand"),
+                second,
+                cmd!("; perform plus operation"),
+                cmd!("mov rax, [retval]"),
+                cmd!("add {}, rax", addr),
+                cmd!("lea retval, {}", addr),
                 cmd!("; end plus")
             ])
         }
