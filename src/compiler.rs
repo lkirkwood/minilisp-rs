@@ -4,10 +4,11 @@ use anyhow::{Result, bail};
 
 use crate::ast::{Expression, ParenExpression};
 
-/// Format a string literal using format!, a leading \t, and a trailing \n.
+/// Format a string literal using format!,
+/// wrapping it in 4 leading spaces and a trailing newline.
 macro_rules! cmd {
     ($cmd:expr $(, $arg:expr)*) => {
-        format!(concat!("\t", $cmd, "\n") $(, $arg)*)
+        format!(concat!("    ", $cmd, "\n") $(, $arg)*)
     };
 }
 
@@ -18,35 +19,85 @@ macro_rules! join {
     }
 }
 
+/// The types that a value can take.
+enum Type {
+    NULL = 0,
+    INT = 1,
+    CONS = 2,
+    LAMBDA = 3,
+    APPLICATION = 4,
+}
+
 const PRELUDE: &str = "
 global _start
 
-section .bss
-   output resb 8
-
 section .text
 _start:
+    ; syscalls
+    %define sys_brk     12
+    %define sys_write   1
 
+    ; registers
+
+    ;; pointer to the start of the available region of heap
+    %define next_heap   r15
+
+    ;; pointer to end of the heap
+    %define heap_end    r14
+
+    ;; pointer to the last returned value
+    %define retval      r13
+
+    ; other constants
+    %define page        4096
+
+    jmp main
+
+alloc_page:
+    mov rax, sys_brk
+    mov rdi, page
+    add rdi, heap_end
+    syscall
+    ret
+
+main:
+    ; Ensure that there is at least %1 bytes left in the heap
+    %macro ensuremem 1
+        mov rax, %1
+        add rax, next_heap          ; rax now has address of the end of new allocation
+
+        cmp next_heap, heap_end
+        jl alloc_page
+    %endmacro
+
+    ; set base pointer to current stack location
     mov rbp, rsp
 
-    ;; generated instructions
+    ; allocate 1kb
+    ensuremem 1024
+
+    ; generated instructions
 ";
 
 const PRINT_RAX_AND_EXIT: &str = "
 
-   ;; printing result and exiting
-    mov [output], rax
-    mov rax, 1
+    ; printing result and exiting
+
+    mov rsi, retval
+    mov rax, sys_write
+    ; set fd to 1 (stdout)
     mov rdi, 1
-    mov rsi, output
-    mov rdx, 8
+    ; set length to 1 byte TODO make this type dependent
+    mov rdx, 1
     syscall
 
+    ; exit
     mov rax, 60
     xor rdi, rdi
     syscall
 ";
 
+/// Compile a program to NASM syntax x86_64 instructions.
 pub fn compile(program: Expression) -> Result<String> {
     let instructions = compile_expr(&mut Context::default(), program)?;
 
@@ -63,18 +114,37 @@ struct Context {
 }
 
 impl Context {
-    fn bind(&mut self, ident: String) -> String {
-        self.current_offset += 8;
-        let value = format!("[rbp - {}]", self.current_offset);
-        match self.bindings.entry(ident) {
-            Entry::Occupied(mut entry) => entry.get_mut().push(value.clone()),
-            Entry::Vacant(entry) => {
-                entry.insert(vec![value.clone()]);
-            }
-        }
-        value
+    /// Allocate `num_bytes` and return their location in memory.
+    fn stack_allocate(&mut self, num_bytes: usize) -> String {
+        self.current_offset += num_bytes;
+        format!("[rbp - {}]", self.current_offset)
     }
 
+    /// Allocate 8 bytes on the stack and bind `ident` to them.
+    /// Return their location in memory.
+    fn bind(&mut self, ident: String) -> String {
+        let addr = self.stack_allocate(8);
+        match self.bindings.entry(ident) {
+            Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
+            Entry::Vacant(entry) => {
+                entry.insert(vec![addr.clone()]);
+            }
+        }
+        addr
+    }
+
+    /// Unbind the innermost binding for `ident`.
+    fn unbind(&mut self, ident: &str) -> Result<()> {
+        if let Some(addrs) = self.bindings.get_mut(ident)
+            && !addrs.is_empty()
+        {
+            addrs.pop();
+            return Ok(());
+        }
+        bail!("Tried to unbind unbound identifier {ident}")
+    }
+
+    /// Get the offset address `ident` is bound to.
     fn get(&mut self, ident: &str) -> Result<String> {
         if let Some(addrs) = self.bindings.get(ident)
             && !addrs.is_empty()
@@ -87,8 +157,21 @@ impl Context {
 
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
-        Expression::Number(num) => Ok(cmd!("mov rax, {}", num)),
-        Expression::Identifier(ident) => Ok(cmd!("    mov rax, {}", ctx.get(&ident)?)),
+        Expression::Number(num) => {
+            let addr = ctx.stack_allocate(8);
+            Ok(join![
+                cmd!("; store number: {}", num),
+                cmd!("mov qword {}, {}", addr, num),
+                cmd!("lea retval, {}", addr),
+                cmd!("; number stored")
+            ])
+        }
+        Expression::Identifier(ident) => Ok(join![
+            cmd!("; return identifier {}", ident),
+            // load address of value into rax
+            cmd!("mov retval, {}", ctx.get(&ident)?),
+            cmd!("; {} returned", ident)
+        ]),
         Expression::Null => todo!("encoding for null"),
         Expression::Paren(parexpr) => compile_parexpr(ctx, *parexpr),
     }
@@ -96,32 +179,46 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
-        ParenExpression::Plus { first, second } => Ok(join![
-            cmd!("{}", compile_expr(ctx, *first)?),
-            cmd!("mov rbx, rax"),
-            cmd!("{}", compile_expr(ctx, *second)?),
-            cmd!("add rax, rbx")
-        ]),
-        // Need to know the address where the value will be stored so that
-        // we can map ident to that address. Problem is we can't reserve memory
-        // upfront because we don't know the size of the value until it is
-        // computed at runtime. So we have to emit ASM that will store the
-        // address of the value in a variable of the same name as the ident.
-        //
-        // To do this probably have to emit some runtime type information.
-        // Can elect a register to always contain a byte indicating the type of
-        // value.
-        ParenExpression::Binding { name, value, body } => {
-            let value_code = compile_expr(ctx, *value)?;
-            let addr = ctx.bind(name.clone());
-            let body_code = compile_expr(ctx, *body)?;
+        ParenExpression::Plus { first, second } => {
+            let first = compile_expr(ctx, *first)?;
+            let second = compile_expr(ctx, *second)?;
+            let addr = ctx.stack_allocate(8);
             Ok(join![
-                cmd!(";; binding {}", name),
-                value_code,
+                cmd!("; begin plus"),
+                first,
+                cmd!("mov {}, retval", addr),
+                second,
+                cmd!("mov rdi, {}", addr),
+                cmd!("mov rax, [rdi]"),
+                cmd!("add rax, [retval]"),
                 cmd!("mov {}, rax", addr),
-                body_code
+                cmd!("mov retval, {}", addr),
+                cmd!("; end plus")
             ])
         }
+        ParenExpression::Binding { name, value, body } => {
+            let value_code = compile_expr(ctx, *value)?;
+            // Offset address of a pointer to the value computed above.
+            let addr = ctx.bind(name.clone());
+            let body_code = compile_expr(ctx, *body)?;
+            ctx.unbind(&name)?;
+            Ok(join![
+                cmd!("; bind {}", name),
+                value_code,
+                cmd!("; store computed value of {}", name),
+                cmd!("sub rsp, 8"),
+                cmd!("mov {}, retval", addr),
+                cmd!("; binding body start"),
+                body_code,
+                cmd!("; unbind {}", name)
+            ])
+        }
+        ParenExpression::Cons { car, cdr } => Ok(join![
+            cmd!("; start cons"),
+            cmd!("ensuremem 128"),
+            cmd!(""),
+            cmd!("; end cons")
+        ]),
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -142,7 +239,7 @@ mod tests {
             .args([
                 "-c",
                 &format!(
-                    "nasm -f elf64 -g asmtest/{filename}.asm -o asmtest/{filename}.o && \
+                    "nasm -f elf64 -g -F dwarf asmtest/{filename}.asm -o asmtest/{filename}.o && \
                     ld -o asmtest/{filename} asmtest/{filename}.o"
                 ),
             ])
@@ -155,7 +252,9 @@ mod tests {
         output = Command::new(format!("./asmtest/{filename}"))
             .output()
             .unwrap();
+        dbg!(str::from_utf8(&output.stderr).unwrap());
         assert_eq!(output.status.code(), Some(0));
+        assert_eq!(output.stdout, vec![42]);
 
         // TODO compare output to interpreter
     }
