@@ -113,6 +113,8 @@ struct Context {
     bindings: HashMap<String, Vec<String>>,
     /// Current offset from base pointer.
     current_offset: usize,
+    /// Number of labels so far created.
+    labels: usize,
 }
 
 impl Context {
@@ -155,6 +157,13 @@ impl Context {
             return Ok(addrs.last().unwrap().clone());
         }
         bail!("Tried to use an unbound identifier: {ident}");
+    }
+
+    /// Create a new globally unique label.
+    fn new_label(&mut self) -> String {
+        let label = format!("label_{}", self.labels);
+        self.labels += 1;
+        label
     }
 }
 
@@ -216,6 +225,35 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("jc generic_error"),
                 cmd!("lea retval, {}", addr),
                 cmd!("; end plus")
+            ])
+        }
+        ParenExpression::Monus { first, second } => {
+            let addr = ctx.stack_allocate(8);
+            let calc_label = ctx.new_label();
+            let end_label = ctx.new_label();
+            let first = compile_expr(ctx, *first)?;
+            let second = compile_expr(ctx, *second)?;
+            Ok(join![
+                cmd!("; begin monus"),
+                cmd!("sub rsp, 8"),
+                cmd!("; compute first monus operand"),
+                first,
+                cmd!("; store first monus operand"),
+                cmd!("mov rax, [retval]"),
+                cmd!("mov {}, rax", addr),
+                cmd!("; compute second monus operand"),
+                second,
+                cmd!("; start calculation"),
+                cmd!("mov rax, [retval]"),
+                cmd!("cmp {}, rax", addr),
+                cmd!("jg {}", calc_label),
+                cmd!("mov {}, 0", addr),
+                cmd!("jmp {}", end_label),
+                cmd!("{} ; perform calculation", calc_label),
+                cmd!("sub {}, rax", addr),
+                cmd!("{} ; end of calculation", end_label),
+                cmd!("lea retval, {}", addr),
+                cmd!("; end monus")
             ])
         }
         ParenExpression::Binding { name, value, body } => {
@@ -347,7 +385,7 @@ mod tests {
         Some(42)
     );
 
-    // (+ INT_MAX 42)
+    // (+ INT_MAX 1)
     //
     // = overflow error
     compile_test!(
@@ -358,6 +396,45 @@ mod tests {
         })),
         1,
         None
+    );
+
+    // (+ INT_MAX 0)
+    //
+    // = INT_MAX
+    compile_test!(
+        compile_plus_overflow_almost,
+        Expression::Paren(Box::new(ParenExpression::Plus {
+            first: Box::new(Expression::Number(u64::MAX)),
+            second: Box::new(Expression::Number(0))
+        })),
+        0,
+        Some(u64::MAX)
+    );
+
+    // (− 43 1)
+    //
+    // = 42
+    compile_test!(
+        compile_monus,
+        Expression::Paren(Box::new(ParenExpression::Monus {
+            first: Box::new(Expression::Number(43)),
+            second: Box::new(Expression::Number(1))
+        })),
+        0,
+        Some(42)
+    );
+
+    // (− 1 42)
+    //
+    // = 0
+    compile_test!(
+        compile_monus_saturates,
+        Expression::Paren(Box::new(ParenExpression::Monus {
+            first: Box::new(Expression::Number(1)),
+            second: Box::new(Expression::Number(42))
+        })),
+        0,
+        Some(0)
     );
 
     // (≜ foo 42 foo)
@@ -436,4 +513,6 @@ mod tests {
         0,
         Some(42)
     );
+
+    // TODO test print cons
 }
