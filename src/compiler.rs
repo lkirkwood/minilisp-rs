@@ -301,7 +301,9 @@ mod tests {
             .unwrap();
         dbg!(str::from_utf8(&output.stderr).unwrap());
         assert_eq!(output.status.code(), Some(0));
-        assert_eq!(output.stdout, vec![42]);
+        let mut bytes = [0; 8];
+        bytes.copy_from_slice(&output.stdout);
+        assert_eq!(u64::from_le_bytes(bytes), 42);
 
         // TODO compare output to interpreter
     }
