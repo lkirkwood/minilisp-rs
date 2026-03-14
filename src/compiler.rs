@@ -274,7 +274,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, process::Command};
+    use std::{fs, i64, process::Command};
 
     use crate::ast::{Expression, ParenExpression};
 
@@ -284,7 +284,7 @@ mod tests {
         let asm = compile(expr.clone()).unwrap();
         fs::write(format!("asmtest/{filename}.asm"), asm).unwrap();
 
-        let mut output = Command::new("bash")
+        let output = Command::new("bash")
             .args([
                 "-c",
                 &format!(
@@ -297,24 +297,31 @@ mod tests {
 
         eprintln!("{}", str::from_utf8(&output.stderr).unwrap());
         assert_eq!(output.status.code(), Some(0));
+    }
 
-        output = Command::new(format!("./asmtest/{filename}"))
+    fn run_asm_file(filename: &str, expected_status: i32, expected_output: Option<u64>) {
+        let output = Command::new(format!("./asmtest/{filename}"))
             .output()
             .unwrap();
         dbg!(str::from_utf8(&output.stderr).unwrap());
-        assert_eq!(output.status.code(), Some(0));
-        let mut bytes = [0; 8];
-        bytes.copy_from_slice(&output.stdout);
-        assert_eq!(u64::from_le_bytes(bytes), 42);
+        assert_eq!(output.status.code(), Some(expected_status));
 
-        // TODO compare output to interpreter
+        if let Some(expected_bytes) = expected_output {
+            let mut actual_bytes = [0; 8];
+            actual_bytes.copy_from_slice(&output.stdout);
+            assert_eq!(u64::from_le_bytes(actual_bytes), expected_bytes);
+        } else {
+            assert!(output.stdout.is_empty());
+        }
     }
 
     macro_rules! compile_test {
-        ($name:ident, $expr:expr) => {
+        ($name:ident, $expr:expr, $code:expr, $output:expr) => {
             #[test]
             fn $name() {
-                write_asm_file($expr, &stringify!($name));
+                let filename = stringify!($name);
+                write_asm_file($expr, &filename);
+                run_asm_file(&filename, $code, $output)
             }
         };
     }
@@ -324,7 +331,7 @@ mod tests {
     // 42
     //
     // = 42
-    compile_test!(compile_num, Expression::Number(42));
+    compile_test!(compile_num, Expression::Number(42), 0, Some(42));
 
     // (+ 41 1)
     //
@@ -334,7 +341,22 @@ mod tests {
         Expression::Paren(Box::new(ParenExpression::Plus {
             first: Box::new(Expression::Number(41)),
             second: Box::new(Expression::Number(1))
-        }))
+        })),
+        0,
+        Some(42)
+    );
+
+    // (+ INT_MAX 42)
+    //
+    // = overflow error
+    compile_test!(
+        compile_plus_overflow_error,
+        Expression::Paren(Box::new(ParenExpression::Plus {
+            first: Box::new(Expression::Number(i64::MAX)),
+            second: Box::new(Expression::Number(42))
+        })),
+        1,
+        None
     );
 
     // (≜ foo 42 foo)
@@ -346,7 +368,9 @@ mod tests {
             name: "foo".to_string(),
             value: Box::new(Expression::Number(42)),
             body: Box::new(Expression::Identifier("foo".to_string()))
-        })
+        }),
+        0,
+        Some(42)
     );
 
     // (≜ foo 41
@@ -367,7 +391,9 @@ mod tests {
                     second: Box::new(Expression::Identifier("bar".to_string()))
                 })
             })
-        })
+        }),
+        0,
+        Some(42)
     );
 
     // (≜ foo (∷ 42 99)
@@ -385,7 +411,9 @@ mod tests {
             body: boxparexpr!(ParenExpression::Car {
                 cons: Box::new(Expression::Identifier("foo".to_string()))
             })
-        })
+        }),
+        0,
+        Some(42)
     );
 
     // (≜ foo (∷ 99 42)
@@ -403,6 +431,8 @@ mod tests {
             body: boxparexpr!(ParenExpression::Cdr {
                 cons: Box::new(Expression::Identifier("foo".to_string()))
             })
-        })
+        }),
+        0,
+        Some(42)
     );
 }
