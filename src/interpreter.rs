@@ -149,7 +149,7 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(n0.checked_sub(n1).unwrap_or(0))),
+            Box::new(|n0, n1| Ok(n0.saturating_sub(n1))),
             '−',
         ),
         ParenExpression::Times { first, second } => {
