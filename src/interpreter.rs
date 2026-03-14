@@ -91,7 +91,7 @@ fn two_arg_numeric_op(
     first: BoxExpr,
     second: BoxExpr,
     idents: HashMap<String, Value>,
-    op: Box<dyn Fn(isize, isize) -> isize>,
+    op: Box<dyn Fn(isize, isize) -> Result<isize>>,
     op_char: char,
 ) -> Result<Value> {
     let first_val = interpret_expr(first, idents.clone())?;
@@ -100,7 +100,7 @@ fn two_arg_numeric_op(
         if let Value::Number(first_num) = first_val.clone().eval()?
             && let Value::Number(second_num) = second_val.clone().eval()?
         {
-            Ok(Value::Number((op)(first_num, second_num)))
+            Ok(Value::Number((op)(first_num, second_num)?))
         } else {
             bail!(
                 "The program must be invalid, because you can't use {op_char} \
@@ -135,20 +135,31 @@ fn interpret_parexpr(
     mut idents: HashMap<String, Value>,
 ) -> Result<Value> {
     match parexpr {
-        ParenExpression::Plus { first, second } => {
-            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 + n1), '+')
-        }
-        ParenExpression::Minus { first, second } => {
-            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 - n1), '−')
-        }
+        ParenExpression::Plus { first, second } => two_arg_numeric_op(
+            first,
+            second,
+            idents,
+            Box::new(|n0, n1| match n0.checked_add(n1) {
+                Some(result) => Ok(result),
+                None => bail!("Integer addition of {n0} and {n1} overflowed."),
+            }),
+            '+',
+        ),
+        ParenExpression::Monus { first, second } => two_arg_numeric_op(
+            first,
+            second,
+            idents,
+            Box::new(|n0, n1| Ok((n0 - n1).max(0))),
+            '−',
+        ),
         ParenExpression::Times { first, second } => {
-            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| n0 * n1), '×')
+            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| Ok(n0 * n1)), '×')
         }
         ParenExpression::Equals { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 == n1)),
+            Box::new(|n0, n1| Ok(isize::from(n0 == n1))),
             '=',
         ),
         ParenExpression::Condition { predicate, yes, no } => {
@@ -215,28 +226,28 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 < n1)),
+            Box::new(|n0, n1| Ok(isize::from(n0 < n1))),
             '‹',
         ),
         ParenExpression::GreaterThan { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 > n1)),
+            Box::new(|n0, n1| Ok(isize::from(n0 > n1))),
             '›',
         ),
         ParenExpression::LogicalAnd { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 != 0 && n1 != 0)),
+            Box::new(|n0, n1| Ok(isize::from(n0 != 0 && n1 != 0))),
             '∧',
         ),
         ParenExpression::LogicalOr { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| isize::from(n0 != 0 || n1 != 0)),
+            Box::new(|n0, n1| Ok(isize::from(n0 != 0 || n1 != 0))),
             '∨',
         ),
         ParenExpression::LogicalNot { value } => {
@@ -355,6 +366,26 @@ mod tests {
     #[test]
     fn interpret_addition() {
         assert_eq!(interpret_str("(+ 123 456)"), Value::Number(579));
+    }
+
+    #[test]
+    fn interpret_addition_overflow_error() {
+        assert!(
+            interpret(parse(tokenise(&format!("(+ 24 {})", i64::MAX)).unwrap()).unwrap()).is_err()
+        );
+    }
+
+    #[test]
+    fn interpret_addition_overflow_almost() {
+        assert_eq!(
+            interpret_str(&format!("(+ 0 {})", i64::MAX)),
+            Value::Number(isize::MAX)
+        );
+    }
+
+    #[test]
+    fn interpret_monus() {
+        assert_eq!(interpret_str("(− 123 456)"), Value::Number(0));
     }
 
     #[test]

@@ -145,7 +145,7 @@ mod tests {
                     first: Box::new(Expression::Number(1)),
                     second: Box::new(Expression::Number(42))
                 }),
-                second: boxparexpr!(ParenExpression::Minus {
+                second: boxparexpr!(ParenExpression::Monus {
                     first: Box::new(Expression::Number(42)),
                     second: Box::new(Expression::Number(0))
                 })

@@ -33,7 +33,7 @@ impl TryFrom<Token> for BoxExpr {
             Token::LeftParen
             | Token::RightParen
             | Token::Plus
-            | Token::Minus
+            | Token::Monus
             | Token::Times
             | Token::Equals
             | Token::Condition
@@ -62,7 +62,7 @@ impl From<Expression> for String {
                 if num >= 0 {
                     num.to_string()
                 } else {
-                    Expression::Paren(Box::new(ParenExpression::Minus {
+                    Expression::Paren(Box::new(ParenExpression::Monus {
                         first: Box::new(Expression::Number(0)),
                         second: Box::new(Expression::Number(num)),
                     }))
@@ -81,7 +81,7 @@ pub enum ParenExpression {
         first: BoxExpr,
         second: BoxExpr,
     },
-    Minus {
+    Monus {
         first: BoxExpr,
         second: BoxExpr,
     },
@@ -159,7 +159,7 @@ impl From<ParenExpression> for String {
             ParenExpression::Plus { first, second } => {
                 two_arg_parexpr_to_string('+', *first, *second)
             }
-            ParenExpression::Minus { first, second } => {
+            ParenExpression::Monus { first, second } => {
                 two_arg_parexpr_to_string('−', *first, *second)
             }
             ParenExpression::Times { first, second } => {
@@ -307,7 +307,7 @@ impl ParenExprBuilder {
             Token::Plus
             | Token::LeftParen
             | Token::Identifier(_)
-            | Token::Minus
+            | Token::Monus
             | Token::Times
             | Token::Equals
             | Token::Cons
@@ -401,8 +401,8 @@ impl ParenExprBuilder {
             Token::Plus => {
                 build_two_arg_parexpr!(self.terms, Plus)
             }
-            Token::Minus => {
-                build_two_arg_parexpr!(self.terms, Minus)
+            Token::Monus => {
+                build_two_arg_parexpr!(self.terms, Monus)
             }
             Token::Times => {
                 build_two_arg_parexpr!(self.terms, Times)
