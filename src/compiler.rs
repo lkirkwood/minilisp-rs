@@ -274,7 +274,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, i64, process::Command};
+    use std::{fs, process::Command, u64};
 
     use crate::ast::{Expression, ParenExpression};
 
@@ -352,8 +352,8 @@ mod tests {
     compile_test!(
         compile_plus_overflow_error,
         Expression::Paren(Box::new(ParenExpression::Plus {
-            first: Box::new(Expression::Number(i64::MAX)),
-            second: Box::new(Expression::Number(42))
+            first: Box::new(Expression::Number(u64::MAX)),
+            second: Box::new(Expression::Number(1))
         })),
         1,
         None
