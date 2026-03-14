@@ -99,7 +99,7 @@ const PRINT_RAX_AND_EXIT: &str = "
     exit 0
 ";
 
-/// Compile a program to NASM syntax x86_64 instructions.
+/// Compile a program to NASM syntax `x86_64` instructions.
 pub fn compile(program: Expression) -> Result<String> {
     let instructions = compile_expr(&mut Context::default(), program)?;
 
@@ -193,6 +193,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     }
 }
 
+#[allow(clippy::similar_names)]
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
