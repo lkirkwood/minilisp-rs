@@ -19,37 +19,37 @@ macro_rules! join {
     }
 }
 
-/// The types that a value can take.
-enum Type {
-    NULL = 0,
-    INT = 1,
-    CONS = 2,
-    LAMBDA = 3,
-    APPLICATION = 4,
-}
-
 const PRELUDE: &str = "
 global _start
+
+section .data
+    ; byte holding current values type
+    type: resb 1
+    type_size: db 1,8,16,8,8
 
 section .text
 _start:
     ; syscalls
-    %define sys_brk     12
-    %define sys_write   1
+    %define sys_brk         12
+    %define sys_write       1
 
     ; registers
-
     ;; pointer to the start of the available region of heap
-    %define next_heap   r15
-
+    %define next_heap       r15
     ;; pointer to end of the heap
-    %define heap_end    r14
-
+    %define heap_end        r14
     ;; pointer to the last returned value
-    %define retval      r13
+    %define retval          r13
 
     ; other constants
-    %define page        4096
+    ;; page size (4KB)
+    %define page            4096
+    ;; value types that can occupy [type]
+    %define null_t          0
+    %define num_t           1
+    %define cons_t          2
+    %define lambda_t        3
+    %define application_t   4
 
     jmp main
 
@@ -60,41 +60,42 @@ alloc_page:
     syscall
     ret
 
-main:
-    ; Ensure that there is at least %1 bytes left in the heap
-    %macro ensuremem 1
-        mov rax, %1
-        add rax, next_heap          ; rax now has address of the end of new allocation
+exit:
+    mov rax, 60
+    xor rdi, rdi
+    syscall
 
-        cmp next_heap, heap_end
-        jl alloc_page
+main:
+    %macro error 1
+        mov rdi, %1
+        jmp exit
     %endmacro
 
     ; set base pointer to current stack location
     mov rbp, rsp
-
-    ; allocate 1kb
-    ensuremem 1024
 
     ; generated instructions
 ";
 
 const PRINT_RAX_AND_EXIT: &str = "
 
-    ; printing result and exiting
+    ; print result and exiting
+
+
+    ; set length of output by type
+    xor rdx, rdx
+    mov byte dl, [type]
+    mov rdi, type_size
+    mov byte dl, [rdi + rdx]
 
     mov rsi, retval
     mov rax, sys_write
     ; set fd to 1 (stdout)
     mov rdi, 1
-    ; set length to 1 byte TODO make this type dependent
-    mov rdx, 1
     syscall
 
-    ; exit
-    mov rax, 60
     xor rdi, rdi
-    syscall
+    jmp exit
 ";
 
 /// Compile a program to NASM syntax x86_64 instructions.
@@ -124,6 +125,7 @@ impl Context {
     /// Return their location in memory.
     fn bind(&mut self, ident: String) -> String {
         let addr = self.stack_allocate(8);
+        let _ = self.stack_allocate(1); // for type byte
         match self.bindings.entry(ident) {
             Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
             Entry::Vacant(entry) => {
@@ -164,16 +166,28 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
                 cmd!("sub rsp, 8"),
                 cmd!("mov qword {}, {}", addr, num),
                 cmd!("lea retval, {}", addr),
+                cmd!("mov byte [type], num_t"),
                 cmd!("; number stored")
             ])
         }
-        Expression::Identifier(ident) => Ok(join![
-            cmd!("; return identifier {}", ident),
-            // load address of value into rax
-            cmd!("mov retval, {}", ctx.get(&ident)?),
-            cmd!("; {} returned", ident)
+        Expression::Identifier(ident) => {
+            let addr = ctx.get(&ident)?;
+            Ok(join![
+                cmd!("; return identifier {}", ident),
+                // load address of value into rax
+                cmd!("mov retval, {}", addr),
+                cmd!("lea rax, {}", addr),
+                cmd!("sub rax, 1"),
+                cmd!("mov byte al, [rax]"),
+                cmd!("mov byte [type], al"), // 1 byte version of rax
+                cmd!("; {} returned", ident)
+            ])
+        }
+        Expression::Null => Ok(join![
+            cmd!("; emitting null"),
+            cmd!("xor retval, retval"),
+            cmd!("mov byte [type], null_t")
         ]),
-        Expression::Null => todo!("encoding for null"),
         Expression::Paren(parexpr) => compile_parexpr(ctx, *parexpr),
     }
 }
@@ -211,8 +225,11 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; bind {}", name),
                 value_code,
                 cmd!("; store computed value of {}", name),
-                cmd!("sub rsp, 8"),
+                cmd!("sub rsp, 9"),
                 cmd!("mov {}, retval", addr),
+                cmd!("lea rax, {}", addr),
+                cmd!("mov byte dl, [type]"),
+                cmd!("mov byte [rax - 1], dl"),
                 cmd!("; binding body start"),
                 body_code,
                 cmd!("; unbind {}", name)
