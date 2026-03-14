@@ -161,6 +161,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
             let addr = ctx.stack_allocate(8);
             Ok(join![
                 cmd!("; store number: {}", num),
+                cmd!("sub rsp, 8"),
                 cmd!("mov qword {}, {}", addr, num),
                 cmd!("lea retval, {}", addr),
                 cmd!("; number stored")
@@ -180,15 +181,15 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
+            let addr = ctx.stack_allocate(8);
             let first = compile_expr(ctx, *first)?;
             let second = compile_expr(ctx, *second)?;
-            let addr = ctx.stack_allocate(8);
             Ok(join![
                 cmd!("; begin plus"),
+                cmd!("sub rsp, 8"),
                 cmd!("; compute first plus operand"),
                 first,
                 cmd!("; store first plus operand"),
-                cmd!("sub rsp, 8"),
                 cmd!("mov rax, [retval]"),
                 cmd!("mov {}, rax", addr),
                 cmd!("; compute second plus operand"),
@@ -217,11 +218,36 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; unbind {}", name)
             ])
         }
-        ParenExpression::Cons { car, cdr } => Ok(join![
-            cmd!("; start cons"),
-            cmd!("ensuremem 128"),
-            cmd!(""),
-            cmd!("; end cons")
+        ParenExpression::Cons { car, cdr } => {
+            let car_addr = ctx.stack_allocate(8);
+            let cdr_addr = ctx.stack_allocate(8);
+            let car_code = compile_expr(ctx, *car)?;
+            let cdr_code = compile_expr(ctx, *cdr)?;
+            Ok(join![
+                cmd!("; start cons"),
+                cmd!("sub rsp, 16"),
+                cmd!("; compute car"),
+                car_code,
+                cmd!("mov {}, retval", car_addr),
+                cmd!("; stored car, compute cdr"),
+                cdr_code,
+                cmd!("mov {}, retval", cdr_addr),
+                cmd!("; stored cdr, return car address"),
+                cmd!("mov retval, {}", car_addr),
+                cmd!("; end cons")
+            ])
+        }
+        ParenExpression::Car { cons } => Ok(join![
+            compile_expr(ctx, *cons)?,
+            cmd!("; get car from cons"),
+            cmd!("; noop - retval already points to start of cons"),
+            cmd!("; end car")
+        ]),
+        ParenExpression::Cdr { cons } => Ok(join![
+            compile_expr(ctx, *cons)?,
+            cmd!("; get cdr from cons"),
+            cmd!("lea retval, [retval - 8]"),
+            cmd!("; end cdr")
         ]),
         other => todo!("compile other parexprs like {other:?}"),
     }
@@ -319,6 +345,42 @@ mod tests {
                     first: Box::new(Expression::Identifier("foo".to_string())),
                     second: Box::new(Expression::Identifier("bar".to_string()))
                 })
+            })
+        })
+    );
+
+    // (≜ foo (∷ 42 99)
+    //     (← foo))
+    //
+    // = 42
+    compile_test!(
+        compile_cons_car,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "foo".to_string(),
+            value: boxparexpr!(ParenExpression::Cons {
+                car: Box::new(Expression::Number(42)),
+                cdr: Box::new(Expression::Number(99))
+            }),
+            body: boxparexpr!(ParenExpression::Car {
+                cons: Box::new(Expression::Identifier("foo".to_string()))
+            })
+        })
+    );
+
+    // (≜ foo (∷ 99 42)
+    //     (→ foo))
+    //
+    // = 42
+    compile_test!(
+        compile_cons_cdr,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "foo".to_string(),
+            value: boxparexpr!(ParenExpression::Cons {
+                car: Box::new(Expression::Number(99)),
+                cdr: Box::new(Expression::Number(42))
+            }),
+            body: boxparexpr!(ParenExpression::Cdr {
+                cons: Box::new(Expression::Identifier("foo".to_string()))
             })
         })
     );
