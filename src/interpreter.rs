@@ -28,7 +28,7 @@ impl Lambda {
 /// These can be recursively computed using the `eval` function.
 pub enum Value {
     Null,
-    Number(isize),
+    Number(u64),
     Cons((Box<Value>, Box<Value>)),
     Lambda(Lambda),
     Application(Rc<dyn Fn() -> Result<Value>>),
@@ -91,7 +91,7 @@ fn two_arg_numeric_op(
     first: BoxExpr,
     second: BoxExpr,
     idents: HashMap<String, Value>,
-    op: Box<dyn Fn(isize, isize) -> Result<isize>>,
+    op: Box<dyn Fn(u64, u64) -> Result<u64>>,
     op_char: char,
 ) -> Result<Value> {
     let first_val = interpret_expr(first, idents.clone())?;
@@ -149,7 +149,7 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok((n0 - n1).max(0))),
+            Box::new(|n0, n1| Ok(n0.checked_sub(n1).unwrap_or(0))),
             '−',
         ),
         ParenExpression::Times { first, second } => {
@@ -159,7 +159,7 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(isize::from(n0 == n1))),
+            Box::new(|n0, n1| Ok(u64::from(n0 == n1))),
             '=',
         ),
         ParenExpression::Condition { predicate, yes, no } => {
@@ -226,35 +226,35 @@ fn interpret_parexpr(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(isize::from(n0 < n1))),
+            Box::new(|n0, n1| Ok(u64::from(n0 < n1))),
             '‹',
         ),
         ParenExpression::GreaterThan { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(isize::from(n0 > n1))),
+            Box::new(|n0, n1| Ok(u64::from(n0 > n1))),
             '›',
         ),
         ParenExpression::LogicalAnd { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(isize::from(n0 != 0 && n1 != 0))),
+            Box::new(|n0, n1| Ok(u64::from(n0 != 0 && n1 != 0))),
             '∧',
         ),
         ParenExpression::LogicalOr { first, second } => two_arg_numeric_op(
             first,
             second,
             idents,
-            Box::new(|n0, n1| Ok(isize::from(n0 != 0 || n1 != 0))),
+            Box::new(|n0, n1| Ok(u64::from(n0 != 0 || n1 != 0))),
             '∨',
         ),
         ParenExpression::LogicalNot { value } => {
             let value = interpret_expr(value, idents.clone())?;
             Ok(Value::Application(Rc::new(move || {
                 if let Value::Number(value_num) = value.clone().eval()? {
-                    Ok(Value::Number(isize::from(value_num == 0)))
+                    Ok(Value::Number(u64::from(value_num == 0)))
                 } else {
                     bail!(
                         "The program must be invalid, because you can't use \
@@ -371,15 +371,15 @@ mod tests {
     #[test]
     fn interpret_addition_overflow_error() {
         assert!(
-            interpret(parse(tokenise(&format!("(+ 24 {})", i64::MAX)).unwrap()).unwrap()).is_err()
+            interpret(parse(tokenise(&format!("(+ 1 {})", u64::MAX)).unwrap()).unwrap()).is_err()
         );
     }
 
     #[test]
     fn interpret_addition_overflow_almost() {
         assert_eq!(
-            interpret_str(&format!("(+ 0 {})", i64::MAX)),
-            Value::Number(isize::MAX)
+            interpret_str(&format!("(+ 0 {})", u64::MAX)),
+            Value::Number(u64::MAX)
         );
     }
 

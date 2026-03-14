@@ -236,7 +236,7 @@ fn random_number(context: &mut Context) -> Expression {
 
     context.deeper();
     let number = match random_num {
-        0 => Expression::Number(random_range(0..100) as isize),
+        0 => Expression::Number(random_range(0..100)),
         1 => random_paren_expr(context, &ValueType::Number),
         _ => unreachable!(),
     };
