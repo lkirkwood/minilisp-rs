@@ -32,6 +32,7 @@ _start:
     ; syscalls
     %define sys_brk         12
     %define sys_write       1
+    %define sys_exit        60
 
     ; registers
     ;; pointer to the start of the available region of heap
@@ -51,6 +52,13 @@ _start:
     %define lambda_t        3
     %define application_t   4
 
+    ;; Exit with given code
+    %macro exit 1
+        mov rdi, %1
+        mov rax, sys_exit
+        syscall
+    %endmacro
+
     jmp main
 
 alloc_page:
@@ -60,16 +68,10 @@ alloc_page:
     syscall
     ret
 
-exit:
-    mov rax, 60
-    xor rdi, rdi
-    syscall
+generic_error:
+    exit 1
 
 main:
-    %macro error 1
-        mov rdi, %1
-        jmp exit
-    %endmacro
 
     ; set base pointer to current stack location
     mov rbp, rsp
@@ -94,8 +96,7 @@ const PRINT_RAX_AND_EXIT: &str = "
     mov rdi, 1
     syscall
 
-    xor rdi, rdi
-    jmp exit
+    exit 0
 ";
 
 /// Compile a program to NASM syntax x86_64 instructions.
@@ -211,6 +212,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; perform plus operation"),
                 cmd!("mov rax, [retval]"),
                 cmd!("add {}, rax", addr),
+                cmd!("jc generic_error"),
                 cmd!("lea retval, {}", addr),
                 cmd!("; end plus")
             ])
