@@ -249,9 +249,9 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("jg {}", calc_label),
                 cmd!("mov {}, 0", addr),
                 cmd!("jmp {}", end_label),
-                cmd!("{} ; perform calculation", calc_label),
+                cmd!("{}: ; perform calculation", calc_label),
                 cmd!("sub {}, rax", addr),
-                cmd!("{} ; end of calculation", end_label),
+                cmd!("{}: ; end of calculation", end_label),
                 cmd!("lea retval, {}", addr),
                 cmd!("; end monus")
             ])
@@ -307,6 +307,24 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             cmd!("lea retval, [retval - 8]"),
             cmd!("; end cdr")
         ]),
+        ParenExpression::NullCheck { value } => {
+            let value_code = compile_expr(ctx, *value)?;
+            let addr = ctx.stack_allocate(8);
+            let skip_label = ctx.new_label();
+            Ok(join![
+                value_code,
+                cmd!("; start null check"),
+                cmd!("sub rsp, 8"),
+                cmd!("mov qword {}, 0", addr),
+                cmd!("mov byte al, [type]"),
+                cmd!("cmp al, null_t"),
+                cmd!("jne {} ; value is not null, skip setting bool", skip_label),
+                cmd!("mov qword {}, 1", addr),
+                cmd!("{}:", skip_label),
+                cmd!("lea retval, {}", addr),
+                cmd!("mov byte [type], num_t")
+            ])
+        }
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -346,8 +364,12 @@ mod tests {
         assert_eq!(output.status.code(), Some(expected_status));
 
         if let Some(expected_bytes) = expected_output {
+            let mut actual_bytes_vec = output.stdout;
+            while actual_bytes_vec.len() < 8 {
+                actual_bytes_vec.push(0);
+            }
             let mut actual_bytes = [0; 8];
-            actual_bytes.copy_from_slice(&output.stdout);
+            actual_bytes.copy_from_slice(&actual_bytes_vec);
             assert_eq!(u64::from_le_bytes(actual_bytes), expected_bytes);
         } else {
             assert!(output.stdout.is_empty());
@@ -355,6 +377,24 @@ mod tests {
     }
 
     macro_rules! compile_test {
+        ($name:ident, $expr:expr) => {
+            #[test]
+            fn $name() {
+                let filename = stringify!($name);
+                write_asm_file($expr, &filename);
+                run_asm_file(&filename, 0, Some(42))
+            }
+        };
+
+        ($name:ident, $expr:expr, $output:expr) => {
+            #[test]
+            fn $name() {
+                let filename = stringify!($name);
+                write_asm_file($expr, &filename);
+                run_asm_file(&filename, 0, $output)
+            }
+        };
+
         ($name:ident, $expr:expr, $code:expr, $output:expr) => {
             #[test]
             fn $name() {
@@ -370,7 +410,7 @@ mod tests {
     // 42
     //
     // = 42
-    compile_test!(compile_num, Expression::Number(42), 0, Some(42));
+    compile_test!(compile_num, Expression::Number(42));
 
     // (+ 41 1)
     //
@@ -380,9 +420,7 @@ mod tests {
         Expression::Paren(Box::new(ParenExpression::Plus {
             first: Box::new(Expression::Number(41)),
             second: Box::new(Expression::Number(1))
-        })),
-        0,
-        Some(42)
+        }))
     );
 
     // (+ INT_MAX 1)
@@ -407,7 +445,6 @@ mod tests {
             first: Box::new(Expression::Number(u64::MAX)),
             second: Box::new(Expression::Number(0))
         })),
-        0,
         Some(u64::MAX)
     );
 
@@ -419,9 +456,7 @@ mod tests {
         Expression::Paren(Box::new(ParenExpression::Monus {
             first: Box::new(Expression::Number(43)),
             second: Box::new(Expression::Number(1))
-        })),
-        0,
-        Some(42)
+        }))
     );
 
     // (− 1 42)
@@ -433,7 +468,6 @@ mod tests {
             first: Box::new(Expression::Number(1)),
             second: Box::new(Expression::Number(42))
         })),
-        0,
         Some(0)
     );
 
@@ -446,9 +480,7 @@ mod tests {
             name: "foo".to_string(),
             value: Box::new(Expression::Number(42)),
             body: Box::new(Expression::Identifier("foo".to_string()))
-        }),
-        0,
-        Some(42)
+        })
     );
 
     // (≜ foo 41
@@ -469,9 +501,7 @@ mod tests {
                     second: Box::new(Expression::Identifier("bar".to_string()))
                 })
             })
-        }),
-        0,
-        Some(42)
+        })
     );
 
     // (≜ foo (∷ 42 99)
@@ -489,9 +519,7 @@ mod tests {
             body: boxparexpr!(ParenExpression::Car {
                 cons: Box::new(Expression::Identifier("foo".to_string()))
             })
-        }),
-        0,
-        Some(42)
+        })
     );
 
     // (≜ foo (∷ 99 42)
@@ -509,9 +537,23 @@ mod tests {
             body: boxparexpr!(ParenExpression::Cdr {
                 cons: Box::new(Expression::Identifier("foo".to_string()))
             })
+        })
+    );
+
+    compile_test!(
+        compile_null_check,
+        *boxparexpr!(ParenExpression::NullCheck {
+            value: Box::new(Expression::Null)
         }),
-        0,
-        Some(42)
+        Some(1)
+    );
+
+    compile_test!(
+        compile_null_check_on_number,
+        *boxparexpr!(ParenExpression::NullCheck {
+            value: Box::new(Expression::Number(1))
+        }),
+        Some(0)
     );
 
     // TODO test print cons
