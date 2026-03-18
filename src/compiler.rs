@@ -23,8 +23,6 @@ const PRELUDE: &str = "
 global _start
 
 section .data
-    ; byte holding current values type
-    type: resb 1
     type_size: db 1,8,16,8,8
 
 section .text
@@ -42,17 +40,22 @@ _start:
     ;; pointer to the last returned value
     %define retval          r13
 
-    ; other constants
-    ;; page size (4KB)
+    ; page size (4KB)
     %define page            4096
-    ;; value types that can occupy [type]
+
+    ; bottom 3 bits set
+    %define bottom_3_set    7
+    ; all bits set except for bottom 3
+    %define bottom_3_zero   18446744073709551608
+
+    ; value types that can occupy [type]
     %define null_t          0
     %define num_t           1
     %define cons_t          2
     %define lambda_t        3
     %define application_t   4
 
-    ;; Exit with given code
+    ; Exit with given code
     %macro exit 1
         mov rdi, %1
         mov rax, sys_exit
@@ -83,14 +86,16 @@ const PRINT_RAX_AND_EXIT: &str = "
 
     ; print result and exiting
 
-
-    ; set length of output by type
-    xor rdx, rdx
-    mov byte dl, [type]
-    mov rdi, type_size
-    mov byte dl, [rdi + rdx]
-
+    ;; set rsi to actual pointer data (drop type info)
     mov rsi, retval
+    and rsi, bottom_3_zero
+
+    ;; get bottom 3 bits of retval
+    xor rdx, rdx
+    ;; retval is now just bottom 3 bits (type info)
+    and retval, bottom_3_set
+    mov byte dl, [type_size + retval]
+
     mov rax, sys_write
     ; set fd to 1 (stdout)
     mov rdi, 1
@@ -128,7 +133,6 @@ impl Context {
     /// Return their location in memory.
     fn bind(&mut self, ident: String) -> String {
         let addr = self.stack_allocate(8);
-        let _ = self.stack_allocate(1); // for type byte
         match self.bindings.entry(ident) {
             Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
             Entry::Vacant(entry) => {
@@ -170,13 +174,13 @@ impl Context {
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
         Expression::Number(num) => {
-            let addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_allocate(8);
             Ok(join![
                 cmd!("; store number: {}", num),
                 cmd!("sub rsp, 8"),
-                cmd!("mov qword {}, {}", addr, num),
-                cmd!("lea retval, {}", addr),
-                cmd!("mov byte [type], num_t"),
+                cmd!("mov qword {}, {}", num_addr, num),
+                cmd!("lea retval, {}", num_addr),
+                cmd!("or retval, num_t"),
                 cmd!("; number stored")
             ])
         }
@@ -186,18 +190,10 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
                 cmd!("; return identifier {}", ident),
                 // load address of value into rax
                 cmd!("mov retval, {}", addr),
-                cmd!("lea rax, {}", addr),
-                cmd!("sub rax, 1"),
-                cmd!("mov byte al, [rax]"),
-                cmd!("mov byte [type], al"), // 1 byte version of rax
                 cmd!("; {} returned", ident)
             ])
         }
-        Expression::Null => Ok(join![
-            cmd!("; emitting null"),
-            cmd!("xor retval, retval"),
-            cmd!("mov byte [type], null_t")
-        ]),
+        Expression::Null => Ok(join![cmd!("; emitting null"), cmd!("xor retval, retval")]),
         Expression::Paren(parexpr) => compile_parexpr(ctx, *parexpr),
     }
 }
@@ -206,7 +202,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
-            let addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_allocate(8);
             let first = compile_expr(ctx, *first)?;
             let second = compile_expr(ctx, *second)?;
             Ok(join![
@@ -214,16 +210,21 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("sub rsp, 8"),
                 cmd!("; compute first plus operand"),
                 first,
+                cmd!("; drop type info"),
+                cmd!("and retval, bottom_3_zero"),
                 cmd!("; store first plus operand"),
                 cmd!("mov rax, [retval]"),
-                cmd!("mov {}, rax", addr),
+                cmd!("mov {}, rax", num_addr),
                 cmd!("; compute second plus operand"),
                 second,
+                cmd!("; drop type info"),
+                cmd!("and retval, bottom_3_zero"),
                 cmd!("; perform plus operation"),
                 cmd!("mov rax, [retval]"),
-                cmd!("add {}, rax", addr),
+                cmd!("add {}, rax", num_addr),
                 cmd!("jc generic_error"),
-                cmd!("lea retval, {}", addr),
+                cmd!("lea retval, {}", num_addr),
+                cmd!("or retval, num_t"),
                 cmd!("; end plus")
             ])
         }
@@ -238,11 +239,15 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("sub rsp, 8"),
                 cmd!("; compute first monus operand"),
                 first,
+                cmd!("; drop type info"),
+                cmd!("and retval, bottom_3_zero"),
                 cmd!("; store first monus operand"),
                 cmd!("mov rax, [retval]"),
                 cmd!("mov {}, rax", addr),
                 cmd!("; compute second monus operand"),
                 second,
+                cmd!("; drop type info"),
+                cmd!("and retval, bottom_3_zero"),
                 cmd!("; start calculation"),
                 cmd!("mov rax, [retval]"),
                 cmd!("cmp {}, rax", addr),
@@ -253,6 +258,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("sub {}, rax", addr),
                 cmd!("{}: ; end of calculation", end_label),
                 cmd!("lea retval, {}", addr),
+                cmd!("or retval, num_t"),
                 cmd!("; end monus")
             ])
         }
@@ -266,11 +272,8 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; bind {}", name),
                 value_code,
                 cmd!("; store computed value of {}", name),
-                cmd!("sub rsp, 9"),
+                cmd!("sub rsp, 8"),
                 cmd!("mov {}, retval", addr),
-                cmd!("lea rax, {}", addr),
-                cmd!("mov byte dl, [type]"),
-                cmd!("mov byte [rax - 1], dl"),
                 cmd!("; binding body start"),
                 body_code,
                 cmd!("; unbind {}", name)
@@ -291,38 +294,46 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cdr_code,
                 cmd!("mov {}, retval", cdr_addr),
                 cmd!("; stored cdr, return car address"),
-                cmd!("mov retval, {}", car_addr),
+                cmd!("lea retval, {}", car_addr),
+                cmd!("and retval, bottom_3_zero"),
+                cmd!("or retval, cons_t"),
                 cmd!("; end cons")
             ])
         }
         ParenExpression::Car { cons } => Ok(join![
             compile_expr(ctx, *cons)?,
             cmd!("; get car from cons"),
-            cmd!("; noop - retval already points to start of cons"),
+            cmd!("and retval, bottom_3_zero"),
+            cmd!("mov retval, [retval]"),
             cmd!("; end car")
         ]),
         ParenExpression::Cdr { cons } => Ok(join![
             compile_expr(ctx, *cons)?,
             cmd!("; get cdr from cons"),
+            cmd!(";; get type info"),
+            cmd!("mov rax, bottom_3_set"),
+            cmd!("and rax, retval"),
+            cmd!(";; drop type info for real pointer"),
+            cmd!("and retval, bottom_3_zero"),
             cmd!("lea retval, [retval - 8]"),
+            cmd!("mov retval, [retval]"),
+            cmd!("or retval, rax"),
             cmd!("; end cdr")
         ]),
         ParenExpression::NullCheck { value } => {
             let value_code = compile_expr(ctx, *value)?;
-            let addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_allocate(8);
             let skip_label = ctx.new_label();
             Ok(join![
                 value_code,
                 cmd!("; start null check"),
                 cmd!("sub rsp, 8"),
-                cmd!("mov qword {}, 0", addr),
-                cmd!("mov byte al, [type]"),
-                cmd!("cmp al, null_t"),
+                cmd!("mov qword {}, 0", num_addr),
+                cmd!("cmp retval, 0"),
                 cmd!("jne {} ; value is not null, skip setting bool", skip_label),
-                cmd!("mov qword {}, 1", addr),
+                cmd!("mov qword {}, 1", num_addr),
                 cmd!("{}:", skip_label),
-                cmd!("lea retval, {}", addr),
-                cmd!("mov byte [type], num_t")
+                cmd!("lea retval, {}", num_addr)
             ])
         }
         other => todo!("compile other parexprs like {other:?}"),
