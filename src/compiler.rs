@@ -34,7 +34,7 @@ _start:
 
     ; registers
     ;; pointer to the start of the available region of heap
-    %define next_heap       r15
+    %define heap_start       r15
     ;; pointer to end of the heap
     %define heap_end        r14
     ;; pointer to the last returned value
@@ -55,20 +55,37 @@ _start:
     %define lambda_t        3
     %define application_t   4
 
-    ; Exit with given code
+    ; exit with given code
     %macro exit 1
         mov rdi, %1
         mov rax, sys_exit
         syscall
     %endmacro
 
+    ; ensure at least %1 bytes of memory available
+    %macro ensuremem 1
+        mov rdx, heap_start
+        add rdx, %1
+        cmp rdx, heap_end
+        jle alloc_until
+        ret
+    %endmacro
+
     jmp main
 
+; allocate one page on heap
 alloc_page:
     mov rax, sys_brk
     mov rdi, page
     add rdi, heap_end
     syscall
+    ret
+
+; allocate pages until heap_end is greater than rdx
+alloc_until:
+    jmp alloc_page
+    cmp rdx, heap_end
+    jle alloc_until
     ret
 
 generic_error:
@@ -79,10 +96,11 @@ main:
     ; set base pointer to current stack location
     mov rbp, rsp
 
-    ; generated instructions
+    ; start generated instructions
 ";
 
 const PRINT_RAX_AND_EXIT: &str = "
+    ; end generated instructions
 
     ; print result and exiting
 
