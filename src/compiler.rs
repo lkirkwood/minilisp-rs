@@ -32,32 +32,54 @@ pub fn compile(program: Expression) -> Result<String> {
 #[derive(Default)]
 /// Context the compiler needs to carry throughout the process.
 struct Context {
-    /// Identifiers mapped to an expression evaluating to the address storing the value.
-    bindings: HashMap<String, Vec<String>>,
+    /// Identifiers mapped to an offset from the base pointer, at which they are stored.
+    bindings: HashMap<String, Vec<usize>>,
     /// Current offset from base pointer.
     current_offset: usize,
     /// Number of labels so far created.
     labels: usize,
+    /// Base addresses that bindings are relative to. If empty, use `rbp`.
+    base_addrs: Vec<String>,
 }
 
 impl Context {
-    /// Allocate `num_bytes` and return their location in memory.
-    fn stack_allocate(&mut self, num_bytes: usize) -> String {
+    fn base_addr(&self) -> &str {
+        if self.base_addrs.is_empty() {
+            "rbp"
+        } else {
+            self.base_addrs.last().unwrap()
+        }
+    }
+
+    /// Allocate `num_bytes` and return the offset.
+    fn stack_allocate(&mut self, num_bytes: usize) -> usize {
         self.current_offset += num_bytes;
-        format!("[rbp - {}]", self.current_offset)
+        self.current_offset
+    }
+
+    /// Return an offset address relative to the current base pointer.
+    fn offset_addr(&self, offset: usize) -> String {
+        format!("[{} - {}]", self.base_addr(), offset)
+    }
+
+    /// Allocate `num_bytes` and return the offset address relative to the current base pointer.
+    /// Roughly shorthand for `ctx.offset_addr(ctx.stack_allocate(num_bytes))`.
+    fn stack_addr(&mut self, num_bytes: usize) -> String {
+        let offset = self.stack_allocate(num_bytes);
+        self.offset_addr(offset)
     }
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.
     /// Return their location in memory.
     fn bind(&mut self, ident: String) -> String {
-        let addr = self.stack_allocate(8);
+        let offset = self.stack_allocate(8);
         match self.bindings.entry(ident) {
-            Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
+            Entry::Occupied(mut entry) => entry.get_mut().push(offset),
             Entry::Vacant(entry) => {
-                entry.insert(vec![addr.clone()]);
+                entry.insert(vec![offset]);
             }
         }
-        addr
+        self.offset_addr(offset)
     }
 
     /// Unbind the innermost binding for `ident`.
@@ -76,7 +98,11 @@ impl Context {
         if let Some(addrs) = self.bindings.get(ident)
             && !addrs.is_empty()
         {
-            return Ok(addrs.last().unwrap().clone());
+            return Ok(format!(
+                "[{} - {}]",
+                self.base_addr(),
+                addrs.last().unwrap().clone()
+            ));
         }
         bail!("Tried to use an unbound identifier: {ident}");
     }
@@ -92,7 +118,7 @@ impl Context {
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
         Expression::Number(num) => {
-            let num_addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_addr(8);
             Ok(join![
                 cmd!("; store number: {}", num),
                 cmd!("sub rsp, 8"),
@@ -120,7 +146,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
-            let num_addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_addr(8);
             let first = compile_expr(ctx, *first)?;
             let second = compile_expr(ctx, *second)?;
             Ok(join![
@@ -147,7 +173,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             ])
         }
         ParenExpression::Monus { first, second } => {
-            let addr = ctx.stack_allocate(8);
+            let addr = ctx.stack_addr(8);
             let calc_label = ctx.new_label();
             let end_label = ctx.new_label();
             let first = compile_expr(ctx, *first)?;
@@ -198,8 +224,8 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             ])
         }
         ParenExpression::Cons { car, cdr } => {
-            let car_addr = ctx.stack_allocate(8);
-            let cdr_addr = ctx.stack_allocate(8);
+            let car_addr = ctx.stack_addr(8);
+            let cdr_addr = ctx.stack_addr(8);
             let car_code = compile_expr(ctx, *car)?;
             let cdr_code = compile_expr(ctx, *cdr)?;
             Ok(join![
@@ -240,7 +266,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         ]),
         ParenExpression::NullCheck { value } => {
             let value_code = compile_expr(ctx, *value)?;
-            let num_addr = ctx.stack_allocate(8);
+            let num_addr = ctx.stack_addr(8);
             let skip_label = ctx.new_label();
             Ok(join![
                 value_code,
