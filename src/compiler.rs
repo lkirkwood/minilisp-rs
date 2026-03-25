@@ -1,8 +1,9 @@
-use std::collections::{HashMap, hash_map::Entry};
+mod context;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::ast::{Expression, ParenExpression};
+use context::Context;
 
 /// Format a string literal using format!,
 /// wrapping it in 4 leading spaces and a trailing newline.
@@ -27,92 +28,6 @@ pub fn compile(program: Expression) -> Result<String> {
         "    ; --- generated instructions ---\n",
         &compile_expr(&mut Context::default(), program)?,
     ))
-}
-
-#[derive(Default)]
-/// Context the compiler needs to carry throughout the process.
-struct Context {
-    /// Identifiers mapped to an offset from the base pointer, at which they are stored.
-    bindings: HashMap<String, Vec<usize>>,
-    /// Current offset from base pointer.
-    current_offset: usize,
-    /// Number of labels so far created.
-    labels: usize,
-    /// Base addresses that bindings are relative to. If empty, use `rbp`.
-    base_addrs: Vec<String>,
-}
-
-impl Context {
-    fn base_addr(&self) -> &str {
-        if self.base_addrs.is_empty() {
-            "rbp"
-        } else {
-            self.base_addrs.last().unwrap()
-        }
-    }
-
-    /// Allocate `num_bytes` and return the offset.
-    fn stack_allocate(&mut self, num_bytes: usize) -> usize {
-        self.current_offset += num_bytes;
-        self.current_offset
-    }
-
-    /// Return an offset address relative to the current base pointer.
-    fn offset_addr(&self, offset: usize) -> String {
-        format!("[{} - {}]", self.base_addr(), offset)
-    }
-
-    /// Allocate `num_bytes` and return the offset address relative to the current base pointer.
-    /// Roughly shorthand for `ctx.offset_addr(ctx.stack_allocate(num_bytes))`.
-    fn stack_addr(&mut self, num_bytes: usize) -> String {
-        let offset = self.stack_allocate(num_bytes);
-        self.offset_addr(offset)
-    }
-
-    /// Allocate 8 bytes on the stack and bind `ident` to them.
-    /// Return their location in memory.
-    fn bind(&mut self, ident: String) -> String {
-        let offset = self.stack_allocate(8);
-        match self.bindings.entry(ident) {
-            Entry::Occupied(mut entry) => entry.get_mut().push(offset),
-            Entry::Vacant(entry) => {
-                entry.insert(vec![offset]);
-            }
-        }
-        self.offset_addr(offset)
-    }
-
-    /// Unbind the innermost binding for `ident`.
-    fn unbind(&mut self, ident: &str) -> Result<()> {
-        if let Some(addrs) = self.bindings.get_mut(ident)
-            && !addrs.is_empty()
-        {
-            addrs.pop();
-            return Ok(());
-        }
-        bail!("Tried to unbind unbound identifier {ident}")
-    }
-
-    /// Get the offset address `ident` is bound to.
-    fn get(&mut self, ident: &str) -> Result<String> {
-        if let Some(addrs) = self.bindings.get(ident)
-            && !addrs.is_empty()
-        {
-            return Ok(format!(
-                "[{} - {}]",
-                self.base_addr(),
-                addrs.last().unwrap().clone()
-            ));
-        }
-        bail!("Tried to use an unbound identifier: {ident}");
-    }
-
-    /// Create a new globally unique label.
-    fn new_label(&mut self) -> String {
-        let label = format!("label_{}", self.labels);
-        self.labels += 1;
-        label
-    }
 }
 
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
@@ -278,6 +193,20 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("mov qword {}, 1", num_addr),
                 cmd!("{}:", skip_label),
                 cmd!("lea retval, {}", num_addr)
+            ])
+        }
+        ParenExpression::Lambda { arg, body } => {
+            // need to:
+            // + copy entire stack to heap
+            // + replace rbp with context base
+            // + write lambda instructions
+            // + write ptr to lambda to retval etc.
+            // ctx.base_addrs.push()
+            Ok(join![
+                cmd!("; start lambda"),
+                cmd!(";; copy entire stack to heap"),
+                cmd!(";; first, get size of stack"),
+                cmd!("; end lambda")
             ])
         }
         other => todo!("compile other parexprs like {other:?}"),
