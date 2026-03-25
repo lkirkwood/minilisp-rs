@@ -25,19 +25,6 @@ impl Context {
         }
     }
 
-    /// Push a new base address, for all bindings addresses to be relative to.
-    pub fn push_base_addr(&mut self, addr: String) {
-        self.base_addrs.push(addr);
-    }
-
-    /// Pop the last base address, if there is one to pop.
-    pub fn pop_base_addr(&mut self) -> Result<()> {
-        if let None = self.base_addrs.pop() {
-            bail!("Trying to pop base address from compiler context, but there are none left!")
-        }
-        Ok(())
-    }
-
     /// Allocate `num_bytes` and return the offset.
     fn stack_allocate(&mut self, num_bytes: usize) -> usize {
         self.current_offset += num_bytes;
@@ -55,11 +42,6 @@ impl Context {
     pub fn stack_addr(&mut self, num_bytes: usize) -> String {
         let offset = self.stack_allocate(num_bytes);
         self.offset_addr(offset)
-    }
-
-    /// Free `num_bytes` from the stack.
-    pub fn stack_free(&mut self, num_bytes: usize) {
-        self.current_offset -= num_bytes
     }
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.

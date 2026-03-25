@@ -1,5 +1,4 @@
 mod context;
-mod freevar;
 
 use anyhow::Result;
 
