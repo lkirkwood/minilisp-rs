@@ -32,23 +32,21 @@ pub fn compile(program: Expression) -> Result<String> {
 
 fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
-        Expression::Number(num) => {
-            let num_addr = ctx.stack_addr(8);
-            Ok(join![
-                cmd!("; store number: {}", num),
-                cmd!("sub rsp, 8"),
-                cmd!("mov qword {}, {}", num_addr, num),
-                cmd!("lea retval, {}", num_addr),
-                cmd!("or retval, num_t"),
-                cmd!("; number stored")
-            ])
-        }
+        Expression::Number(num) => Ok(join![
+            cmd!("; store number: {}", num),
+            cmd!("mov qword retval, {}", num),
+            cmd!("mov qword rettype, num_t"),
+            cmd!("; number stored")
+        ]),
         Expression::Identifier(ident) => {
             let addr = ctx.get(&ident)?;
             Ok(join![
                 cmd!("; return identifier {}", ident),
                 // load address of value into rax
                 cmd!("mov retval, {}", addr),
+                cmd!("lea rdi, {}", addr),
+                cmd!("sub rdi, 8"),
+                cmd!("mov rettype, [rdi]"),
                 cmd!("; {} returned", ident)
             ])
         }
@@ -61,154 +59,173 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
         ParenExpression::Plus { first, second } => {
-            let num_addr = ctx.stack_addr(8);
             let first = compile_expr(ctx, *first)?;
             let second = compile_expr(ctx, *second)?;
             Ok(join![
                 cmd!("; begin plus"),
-                cmd!("sub rsp, 8"),
                 cmd!("; compute first plus operand"),
                 first,
-                cmd!("; drop type info"),
-                cmd!("and retval, bottom_3_zero"),
                 cmd!("; store first plus operand"),
-                cmd!("mov rax, [retval]"),
-                cmd!("mov {}, rax", num_addr),
+                cmd!("mov [tmp_val], retval"),
                 cmd!("; compute second plus operand"),
                 second,
-                cmd!("; drop type info"),
-                cmd!("and retval, bottom_3_zero"),
-                cmd!("; perform plus operation"),
-                cmd!("mov rax, [retval]"),
-                cmd!("add {}, rax", num_addr),
+                cmd!("add retval, [tmp_val]"),
                 cmd!("jc generic_error"),
-                cmd!("lea retval, {}", num_addr),
-                cmd!("or retval, num_t"),
                 cmd!("; end plus")
             ])
         }
         ParenExpression::Monus { first, second } => {
-            let addr = ctx.stack_addr(8);
             let calc_label = ctx.new_label();
             let end_label = ctx.new_label();
-            let first = compile_expr(ctx, *first)?;
             let second = compile_expr(ctx, *second)?;
+            let first = compile_expr(ctx, *first)?;
             Ok(join![
                 cmd!("; begin monus"),
-                cmd!("sub rsp, 8"),
-                cmd!("; compute first monus operand"),
-                first,
-                cmd!("; drop type info"),
-                cmd!("and retval, bottom_3_zero"),
-                cmd!("; store first monus operand"),
-                cmd!("mov rax, [retval]"),
-                cmd!("mov {}, rax", addr),
-                cmd!("; compute second monus operand"),
+                cmd!("; compute second monus operand first"),
                 second,
-                cmd!("; drop type info"),
-                cmd!("and retval, bottom_3_zero"),
-                cmd!("; start calculation"),
-                cmd!("mov rax, [retval]"),
-                cmd!("cmp {}, rax", addr),
+                cmd!("; store second monus operand"),
+                cmd!("mov [tmp_val], retval"),
+                cmd!("; compute first monus operand now"),
+                first,
+                cmd!("cmp retval, [tmp_val]"),
                 cmd!("jg {}", calc_label),
-                cmd!("mov {}, 0", addr),
+                cmd!("xor retval, retval"),
                 cmd!("jmp {}", end_label),
                 cmd!("{}: ; perform calculation", calc_label),
-                cmd!("sub {}, rax", addr),
+                cmd!("sub retval, [tmp_val]"),
                 cmd!("{}: ; end of calculation", end_label),
-                cmd!("lea retval, {}", addr),
-                cmd!("or retval, num_t"),
                 cmd!("; end monus")
             ])
         }
         ParenExpression::Binding { name, value, body } => {
             let value_code = compile_expr(ctx, *value)?;
-            // Offset address of a pointer to the value computed above.
-            let addr = ctx.bind(name.clone());
+            let val_addr = ctx.bind(name.clone());
+            let type_addr = ctx.stack_addr(8);
             let body_code = compile_expr(ctx, *body)?;
             ctx.unbind(&name)?;
             Ok(join![
                 cmd!("; bind {}", name),
                 value_code,
                 cmd!("; store computed value of {}", name),
-                cmd!("sub rsp, 8"),
-                cmd!("mov {}, retval", addr),
+                cmd!("sub rsp, 16"),
+                cmd!("mov {}, retval", val_addr),
+                cmd!("mov qword {}, rettype", type_addr),
                 cmd!("; binding body start"),
                 body_code,
                 cmd!("; unbind {}", name)
             ])
         }
-        ParenExpression::Cons { car, cdr } => {
-            let car_addr = ctx.stack_addr(8);
-            let cdr_addr = ctx.stack_addr(8);
-            let car_code = compile_expr(ctx, *car)?;
-            let cdr_code = compile_expr(ctx, *cdr)?;
-            Ok(join![
-                cmd!("; start cons"),
-                cmd!("sub rsp, 16"),
-                cmd!("; compute car"),
-                car_code,
-                cmd!("mov {}, retval", car_addr),
-                cmd!("; stored car, compute cdr"),
-                cdr_code,
-                cmd!("mov {}, retval", cdr_addr),
-                cmd!("; stored cdr, return car address"),
-                cmd!("lea retval, {}", car_addr),
-                cmd!("and retval, bottom_3_zero"),
-                cmd!("or retval, cons_t"),
-                cmd!("; end cons")
-            ])
-        }
-        ParenExpression::Car { cons } => Ok(join![
-            compile_expr(ctx, *cons)?,
-            cmd!("; get car from cons"),
-            cmd!("and retval, bottom_3_zero"),
-            cmd!("mov retval, [retval]"),
-            cmd!("; end car")
-        ]),
-        ParenExpression::Cdr { cons } => Ok(join![
-            compile_expr(ctx, *cons)?,
-            cmd!("; get cdr from cons"),
-            cmd!(";; get type info"),
-            cmd!("mov rax, bottom_3_set"),
-            cmd!("and rax, retval"),
-            cmd!(";; drop type info for real pointer"),
-            cmd!("and retval, bottom_3_zero"),
-            cmd!("lea retval, [retval - 8]"),
-            cmd!("mov retval, [retval]"),
-            cmd!("or retval, rax"),
-            cmd!("; end cdr")
-        ]),
-        ParenExpression::NullCheck { value } => {
-            let value_code = compile_expr(ctx, *value)?;
-            let num_addr = ctx.stack_addr(8);
-            let skip_label = ctx.new_label();
-            Ok(join![
-                value_code,
-                cmd!("; start null check"),
-                cmd!("sub rsp, 8"),
-                cmd!("mov qword {}, 0", num_addr),
-                cmd!("cmp retval, 0"),
-                cmd!("jne {} ; value is not null, skip setting bool", skip_label),
-                cmd!("mov qword {}, 1", num_addr),
-                cmd!("{}:", skip_label),
-                cmd!("lea retval, {}", num_addr)
-            ])
-        }
-        ParenExpression::Lambda { arg, body } => {
-            // need to:
-            // + copy entire stack to heap
-            // + replace rbp with context base
-            // + write lambda instructions
-            // + write ptr to lambda to retval etc.
-            // ctx.base_addrs.push()
-            Ok(join![
-                cmd!("; start lambda"),
-                cmd!(";; copy entire stack to heap"),
-                cmd!(";; first, get size of stack"),
-                cmd!("; end lambda")
-            ])
-        }
+        // ParenExpression::Cons { car, cdr } => {
+        //     let car_addr = ctx.stack_addr(8);
+        //     let cdr_addr = ctx.stack_addr(8);
+        //     let car_code = compile_expr(ctx, *car)?;
+        //     let cdr_code = compile_expr(ctx, *cdr)?;
+        //     Ok(join![
+        //         cmd!("; start cons"),
+        //         cmd!("sub rsp, 16"),
+        //         cmd!("; compute car"),
+        //         car_code,
+        //         cmd!("mov {}, retval", car_addr),
+        //         cmd!("; stored car, compute cdr"),
+        //         cdr_code,
+        //         cmd!("mov {}, retval", cdr_addr),
+        //         cmd!("; stored cdr, return car address"),
+        //         cmd!("lea retval, {}", car_addr),
+        //         cmd!("and retval, bottom_3_zero"),
+        //         cmd!("or retval, cons_t"),
+        //         cmd!("; end cons")
+        //     ])
+        // }
+        // ParenExpression::Car { cons } => Ok(join![
+        //     compile_expr(ctx, *cons)?,
+        //     cmd!("; get car from cons"),
+        //     cmd!("and retval, bottom_3_zero"),
+        //     cmd!("mov retval, [retval]"),
+        //     cmd!("; end car")
+        // ]),
+        // ParenExpression::Cdr { cons } => Ok(join![
+        //     compile_expr(ctx, *cons)?,
+        //     cmd!("; get cdr from cons"),
+        //     cmd!(";; get type info"),
+        //     cmd!("mov rax, bottom_3_set"),
+        //     cmd!("and rax, retval"),
+        //     cmd!(";; drop type info for real pointer"),
+        //     cmd!("and retval, bottom_3_zero"),
+        //     cmd!("lea retval, [retval - 8]"),
+        //     cmd!("mov retval, [retval]"),
+        //     cmd!("or retval, rax"),
+        //     cmd!("; end cdr")
+        // ]),
+        // ParenExpression::NullCheck { value } => {
+        //     let value_code = compile_expr(ctx, *value)?;
+        //     let num_addr = ctx.stack_addr(8);
+        //     let skip_label = ctx.new_label();
+        //     Ok(join![
+        //         value_code,
+        //         cmd!("; start null check"),
+        //         cmd!("sub rsp, 8"),
+        //         cmd!("mov qword {}, 0", num_addr),
+        //         cmd!("cmp retval, 0"),
+        //         cmd!("jne {} ; value is not null, skip setting bool", skip_label),
+        //         cmd!("mov qword {}, 1", num_addr),
+        //         cmd!("{}:", skip_label),
+        //         cmd!("lea retval, {}", num_addr)
+        //     ])
+        // }
+        // ParenExpression::Lambda { arg, body } => {
+        //     // need to:
+        //     // + copy free vars to heap (later)
+        //     // + replace rbp with context base
+        //     // + write lambda instructions
+        //     // + write ptr to lambda to retval etc.
+
+        //     let lambda_addr = ctx.stack_addr(8);
+        //     let arg_addr = ctx.bind(arg.clone());
+        //     let start_label = ctx.new_label();
+        //     let skip_label = ctx.new_label();
+        //     let lambda_code = compile_expr(ctx, *body)?;
+        //     ctx.unbind(&arg)?;
+
+        //     Ok(join![
+        //         cmd!("; start lambda"),
+        //         cmd!("sub rsp, 16"),
+        //         cmd!("jmp {}", skip_label),
+        //         cmd!("{}:", start_label),
+        //         lambda_code,
+        //         cmd!("ret"),
+        //         cmd!("{}: ", skip_label),
+        //         cmd!("lea rdi, [{}]", start_label),
+        //         cmd!("mov {}, rdi", lambda_addr),
+        //         cmd!("lea rdi, {}", lambda_addr),
+        //         cmd!("add rdi, 8"),
+        //         cmd!("lea rdx, {}", arg_addr),
+        //         cmd!("mov [rdi], rdx"),
+        //         cmd!("lea retval, {}", lambda_addr),
+        //         cmd!("or retval, lambda_t"),
+        //         cmd!("; end lambda")
+        //     ])
+        // }
+        // ParenExpression::Application { lambda, argument } => {
+        //     let arg_addr = ctx.stack_addr(8);
+        //     Ok(join![
+        //         cmd!("; start application"),
+        //         cmd!("sub rsp, 8"),
+        //         cmd!(";; compute argument"),
+        //         compile_expr(ctx, *argument)?,
+        //         cmd!(";; argument computed"),
+        //         cmd!("mov {}, retval", arg_addr),
+        //         cmd!(";; compute lambda to apply"),
+        //         compile_expr(ctx, *lambda)?,
+        //         cmd!(";; lambda computed"),
+        //         cmd!("and retval, bottom_3_zero"),
+        //         cmd!(";; set argument"),
+        //         cmd!("mov rdx, {}", arg_addr),
+        //         cmd!("lea rdi, [retval + 8]"),
+        //         cmd!("mov rdi, [rdi]"),
+        //         cmd!("mov [rdi], rdx"),
+        //         cmd!("call [retval]")
+        //     ])
+        // }
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -388,57 +405,75 @@ mod tests {
         })
     );
 
-    // (≜ foo (∷ 42 99)
-    //     (← foo))
-    //
-    // = 42
-    compile_test!(
-        compile_cons_car,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(Expression::Number(42)),
-                cdr: Box::new(Expression::Number(99))
-            }),
-            body: boxparexpr!(ParenExpression::Car {
-                cons: Box::new(Expression::Identifier("foo".to_string()))
-            })
-        })
-    );
+    // // (≜ foo (∷ 42 99)
+    // //     (← foo))
+    // //
+    // // = 42
+    // compile_test!(
+    //     compile_cons_car,
+    //     *boxparexpr!(ParenExpression::Binding {
+    //         name: "foo".to_string(),
+    //         value: boxparexpr!(ParenExpression::Cons {
+    //             car: Box::new(Expression::Number(42)),
+    //             cdr: Box::new(Expression::Number(99))
+    //         }),
+    //         body: boxparexpr!(ParenExpression::Car {
+    //             cons: Box::new(Expression::Identifier("foo".to_string()))
+    //         })
+    //     })
+    // );
 
-    // (≜ foo (∷ 99 42)
-    //     (→ foo))
-    //
-    // = 42
-    compile_test!(
-        compile_cons_cdr,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(Expression::Number(99)),
-                cdr: Box::new(Expression::Number(42))
-            }),
-            body: boxparexpr!(ParenExpression::Cdr {
-                cons: Box::new(Expression::Identifier("foo".to_string()))
-            })
-        })
-    );
+    // // (≜ foo (∷ 99 42)
+    // //     (→ foo))
+    // //
+    // // = 42
+    // compile_test!(
+    //     compile_cons_cdr,
+    //     *boxparexpr!(ParenExpression::Binding {
+    //         name: "foo".to_string(),
+    //         value: boxparexpr!(ParenExpression::Cons {
+    //             car: Box::new(Expression::Number(99)),
+    //             cdr: Box::new(Expression::Number(42))
+    //         }),
+    //         body: boxparexpr!(ParenExpression::Cdr {
+    //             cons: Box::new(Expression::Identifier("foo".to_string()))
+    //         })
+    //     })
+    // );
 
-    compile_test!(
-        compile_null_check,
-        *boxparexpr!(ParenExpression::NullCheck {
-            value: Box::new(Expression::Null)
-        }),
-        Some(1)
-    );
+    // // TODO test print cons
 
-    compile_test!(
-        compile_null_check_on_number,
-        *boxparexpr!(ParenExpression::NullCheck {
-            value: Box::new(Expression::Number(1))
-        }),
-        Some(0)
-    );
+    // // (∘ ∅)
+    // //
+    // // = 1
+    // compile_test!(
+    //     compile_null_check,
+    //     *boxparexpr!(ParenExpression::NullCheck {
+    //         value: Box::new(Expression::Null)
+    //     }),
+    //     Some(1)
+    // );
 
-    // TODO test print cons
+    // // (∘ 42)
+    // //
+    // // = 0
+    // compile_test!(
+    //     compile_null_check_on_number,
+    //     *boxparexpr!(ParenExpression::NullCheck {
+    //         value: Box::new(Expression::Number(42))
+    //     }),
+    //     Some(0)
+    // );
+
+    // compile_test!(
+    //     compile_lambda_application,
+    //     *boxparexpr!(ParenExpression::Application {
+    //         lambda: boxparexpr!(ParenExpression::Lambda {
+    //             arg: "foo".to_string(),
+    //             body: Box::new(Expression::Number(42))
+    //         }),
+    //         argument: Box::new(Expression::Null)
+    //     }),
+    //     Some(42)
+    // );
 }

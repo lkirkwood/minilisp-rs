@@ -1,7 +1,10 @@
 global _start
 
 section .data
-    type_size: db 1,8,16,8,8
+    ; type size array
+    type_size:              db 1,8,16,8,8
+    ; temporary value store
+    tmp_val:                resb 8
 
 section .text
 _start:
@@ -12,11 +15,13 @@ _start:
 
     ; registers
     ;; pointer to the start of the available region of heap
-    %define heap_start       r15
+    %define heap_start      r15
     ;; pointer to end of the heap
     %define heap_end        r14
-    ;; pointer to the last returned value
+    ;; the returned value
     %define retval          r13
+    ;; type of retval
+    %define rettype         r12
 
     ; page size (4KB)
     %define page            4096
@@ -31,7 +36,6 @@ _start:
     %define num_t           1
     %define cons_t          2
     %define lambda_t        3
-    %define application_t   4
 
     ; exit with given code
     %macro exit 1
@@ -80,15 +84,9 @@ main:
 
     ; print result and exiting
 
-    ;; set rsi to actual pointer data (drop type info)
-    mov rsi, retval
-    and rsi, bottom_3_zero
-
-    ;; get bottom 3 bits of retval
-    xor rdx, rdx
-    ;; retval is now just bottom 3 bits (type info)
-    and retval, bottom_3_set
-    mov byte dl, [type_size + retval]
+    push retval
+    mov rsi, rsp
+    mov byte dl, [type_size + rettype]
 
     mov rax, sys_write
     ; set fd to 1 (stdout)
