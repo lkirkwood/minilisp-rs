@@ -50,7 +50,11 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
                 cmd!("; {} returned", ident)
             ])
         }
-        Expression::Null => Ok(join![cmd!("; emitting null"), cmd!("xor retval, retval")]),
+        Expression::Null => Ok(join![
+            cmd!("; emitting null"),
+            cmd!("xor retval, retval"),
+            cmd!("xor rettype, rettype")
+        ]),
         Expression::Paren(parexpr) => compile_parexpr(ctx, *parexpr),
     }
 }
@@ -156,22 +160,22 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         //     cmd!("or retval, rax"),
         //     cmd!("; end cdr")
         // ]),
-        // ParenExpression::NullCheck { value } => {
-        //     let value_code = compile_expr(ctx, *value)?;
-        //     let num_addr = ctx.stack_addr(8);
-        //     let skip_label = ctx.new_label();
-        //     Ok(join![
-        //         value_code,
-        //         cmd!("; start null check"),
-        //         cmd!("sub rsp, 8"),
-        //         cmd!("mov qword {}, 0", num_addr),
-        //         cmd!("cmp retval, 0"),
-        //         cmd!("jne {} ; value is not null, skip setting bool", skip_label),
-        //         cmd!("mov qword {}, 1", num_addr),
-        //         cmd!("{}:", skip_label),
-        //         cmd!("lea retval, {}", num_addr)
-        //     ])
-        // }
+        ParenExpression::NullCheck { value } => {
+            let value_code = compile_expr(ctx, *value)?;
+            let skip_label = ctx.new_label();
+            Ok(join![
+                value_code,
+                cmd!("; start null check"),
+                cmd!("cmp retval, 0"),
+                cmd!("xor retval, retval"),
+                cmd!("jne {} ; value is not null, skip setting bool", skip_label),
+                cmd!("cmp rettype, 0"),
+                cmd!("jne {} ; type is not null, skip setting bool", skip_label),
+                cmd!("mov retval, 1"),
+                cmd!("{}:", skip_label),
+                cmd!("mov qword rettype, num_t")
+            ])
+        }
         // ParenExpression::Lambda { arg, body } => {
         //     // need to:
         //     // + copy free vars to heap (later)
@@ -443,27 +447,27 @@ mod tests {
 
     // // TODO test print cons
 
-    // // (∘ ∅)
-    // //
-    // // = 1
-    // compile_test!(
-    //     compile_null_check,
-    //     *boxparexpr!(ParenExpression::NullCheck {
-    //         value: Box::new(Expression::Null)
-    //     }),
-    //     Some(1)
-    // );
+    // (∘ ∅)
+    //
+    // = 1
+    compile_test!(
+        compile_null_check,
+        *boxparexpr!(ParenExpression::NullCheck {
+            value: Box::new(Expression::Null)
+        }),
+        Some(1)
+    );
 
-    // // (∘ 42)
-    // //
-    // // = 0
-    // compile_test!(
-    //     compile_null_check_on_number,
-    //     *boxparexpr!(ParenExpression::NullCheck {
-    //         value: Box::new(Expression::Number(42))
-    //     }),
-    //     Some(0)
-    // );
+    // (∘ 42)
+    //
+    // = 0
+    compile_test!(
+        compile_null_check_on_number,
+        *boxparexpr!(ParenExpression::NullCheck {
+            value: Box::new(Expression::Number(42))
+        }),
+        Some(0)
+    );
 
     // compile_test!(
     //     compile_lambda_application,
