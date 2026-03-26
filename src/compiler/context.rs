@@ -25,8 +25,8 @@ impl Context {
         }
     }
 
-    /// Allocate `num_bytes` and return the offset.
-    fn stack_allocate(&mut self, num_bytes: usize) -> usize {
+    /// Increase `rsp` offset from `rbp` by `num_bytes`.
+    fn bump_rsp_offset(&mut self, num_bytes: usize) -> usize {
         self.current_offset += num_bytes;
         self.current_offset
     }
@@ -39,15 +39,19 @@ impl Context {
     /// Allocate `num_bytes` and return the offset address relative to the
     /// current stack base pointer. Roughly shorthand for:
     /// `ctx.offset_addr(ctx.stack_allocate(num_bytes))`.
-    pub fn stack_addr(&mut self, num_bytes: usize) -> String {
-        let offset = self.stack_allocate(num_bytes);
+    pub fn stack_alloc(&mut self, num_bytes: usize) -> String {
+        let offset = self.bump_rsp_offset(num_bytes);
         self.offset_addr(offset)
+    }
+
+    pub fn stack_free(&mut self, num_bytes: usize) {
+        self.current_offset -= num_bytes
     }
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.
     /// Return their location in memory.
     pub fn bind(&mut self, ident: String) -> String {
-        let offset = self.stack_allocate(8);
+        let offset = self.bump_rsp_offset(8);
         match self.bindings.entry(ident) {
             Entry::Occupied(mut entry) => entry.get_mut().push(offset),
             Entry::Vacant(entry) => {

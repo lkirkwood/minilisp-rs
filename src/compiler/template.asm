@@ -44,16 +44,31 @@ _start:
         syscall
     %endmacro
 
-    ; ensure at least %1 bytes of memory available
-    %macro ensuremem 1
-        mov rdx, heap_start
-        add rdx, %1
-        cmp rdx, heap_end
-        jle alloc_until
-        ret
-    %endmacro
+    ; set up heap
+    mov rax, sys_brk
+    xor rdi, rdi
+    syscall
+    mov heap_start, rax
+    mov heap_end, rax
 
     jmp main
+
+ensure_mem:
+    add rax, heap_start
+    cmp rax, heap_end
+    jle .skip_alloc_until
+    call alloc_until
+    .skip_alloc_until:
+    ret
+
+; allocate pages until heap_end is greater than rax
+alloc_until:
+    call alloc_page
+    cmp rax, heap_end
+    jle .stop_allocating
+    call alloc_page
+    .stop_allocating:
+    ret
 
 ; allocate one page on heap
 alloc_page:
@@ -61,13 +76,6 @@ alloc_page:
     mov rdi, page
     add rdi, heap_end
     syscall
-    ret
-
-; allocate pages until heap_end is greater than rdx
-alloc_until:
-    jmp alloc_page
-    cmp rdx, heap_end
-    jle alloc_until
     ret
 
 generic_error:

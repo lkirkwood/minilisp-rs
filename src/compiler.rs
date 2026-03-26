@@ -103,63 +103,79 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         }
         ParenExpression::Binding { name, value, body } => {
             let value_code = compile_expr(ctx, *value)?;
-            let val_addr = ctx.bind(name.clone());
-            let type_addr = ctx.stack_addr(8);
+            let _val_addr = ctx.bind(name.clone());
+            let _type_addr = ctx.stack_alloc(16);
             let body_code = compile_expr(ctx, *body)?;
-            ctx.unbind(&name)?;
+            ctx.stack_free(16);
             Ok(join![
+                cmd!("; start binding"),
                 cmd!("; bind {}", name),
                 value_code,
                 cmd!("; store computed value of {}", name),
-                cmd!("sub rsp, 16"),
-                cmd!("mov {}, retval", val_addr),
-                cmd!("mov qword {}, rettype", type_addr),
+                cmd!("push retval"),
+                cmd!("push rettype"),
                 cmd!("; binding body start"),
                 body_code,
-                cmd!("; unbind {}", name)
+                cmd!("; unbind {}", name),
+                cmd!("pop rax"),
+                cmd!("pop rax"),
+                cmd!("; end binding")
             ])
         }
-        // ParenExpression::Cons { car, cdr } => {
-        //     let car_addr = ctx.stack_addr(8);
-        //     let cdr_addr = ctx.stack_addr(8);
-        //     let car_code = compile_expr(ctx, *car)?;
-        //     let cdr_code = compile_expr(ctx, *cdr)?;
-        //     Ok(join![
-        //         cmd!("; start cons"),
-        //         cmd!("sub rsp, 16"),
-        //         cmd!("; compute car"),
-        //         car_code,
-        //         cmd!("mov {}, retval", car_addr),
-        //         cmd!("; stored car, compute cdr"),
-        //         cdr_code,
-        //         cmd!("mov {}, retval", cdr_addr),
-        //         cmd!("; stored cdr, return car address"),
-        //         cmd!("lea retval, {}", car_addr),
-        //         cmd!("and retval, bottom_3_zero"),
-        //         cmd!("or retval, cons_t"),
-        //         cmd!("; end cons")
-        //     ])
-        // }
-        // ParenExpression::Car { cons } => Ok(join![
-        //     compile_expr(ctx, *cons)?,
-        //     cmd!("; get car from cons"),
-        //     cmd!("and retval, bottom_3_zero"),
-        //     cmd!("mov retval, [retval]"),
-        //     cmd!("; end car")
-        // ]),
-        // ParenExpression::Cdr { cons } => Ok(join![
-        //     compile_expr(ctx, *cons)?,
-        //     cmd!("; get cdr from cons"),
-        //     cmd!(";; get type info"),
-        //     cmd!("mov rax, bottom_3_set"),
-        //     cmd!("and rax, retval"),
-        //     cmd!(";; drop type info for real pointer"),
-        //     cmd!("and retval, bottom_3_zero"),
-        //     cmd!("lea retval, [retval - 8]"),
-        //     cmd!("mov retval, [retval]"),
-        //     cmd!("or retval, rax"),
-        //     cmd!("; end cdr")
-        // ]),
+        ParenExpression::Cons { car, cdr } => {
+            let _heap_start = ctx.stack_alloc(8);
+            let car_code = compile_expr(ctx, *car)?;
+            let cdr_code = compile_expr(ctx, *cdr)?;
+            ctx.stack_free(8);
+            Ok(join![
+                cmd!("; start cons"),
+                cmd!("; allocate heap space"),
+                cmd!("mov rax, 32"),
+                cmd!("call ensure_mem"),
+                cmd!("push heap_start"),
+                cmd!("; compute car"),
+                car_code,
+                cmd!("; store car on heap"),
+                cmd!("pop rdi"),
+                cmd!("mov [rdi], retval"),
+                cmd!("add rdi, 8"),
+                cmd!("mov [rdi], rettype"),
+                cmd!("add rdi, 8"),
+                cmd!("push rdi"),
+                cmd!("; stored car, compute cdr"),
+                cdr_code,
+                cmd!("; store cdr"),
+                cmd!("pop rdi"),
+                cmd!("mov [rdi], retval"),
+                cmd!("add rdi, 8"),
+                cmd!("mov [rdi], rettype"),
+                cmd!("add rdi, 8"),
+                cmd!("; stored cdr, return car address"),
+                cmd!("mov retval, rdi"),
+                cmd!("sub retval, 32"),
+                cmd!("mov rettype, cons_t"),
+                cmd!("; end cons")
+            ])
+        }
+        ParenExpression::Car { cons } => Ok(join![
+            compile_expr(ctx, *cons)?,
+            cmd!("; get car from cons"),
+            cmd!("mov rdi, retval"),
+            cmd!("add rdi, 8"),
+            cmd!("mov retval, [retval]"),
+            cmd!("mov rettype, [rdi]"),
+            cmd!("; end car")
+        ]),
+        ParenExpression::Cdr { cons } => Ok(join![
+            compile_expr(ctx, *cons)?,
+            cmd!("; get cdr from cons"),
+            cmd!("add retval, 16"),
+            cmd!("mov rdi, retval"),
+            cmd!("add rdi, 8"),
+            cmd!("mov retval, [retval]"),
+            cmd!("mov rettype, [rdi]"),
+            cmd!("; end cdr")
+        ]),
         ParenExpression::NullCheck { value } => {
             let value_code = compile_expr(ctx, *value)?;
             let skip_label = ctx.new_label();
@@ -409,41 +425,41 @@ mod tests {
         })
     );
 
-    // // (≜ foo (∷ 42 99)
-    // //     (← foo))
-    // //
-    // // = 42
-    // compile_test!(
-    //     compile_cons_car,
-    //     *boxparexpr!(ParenExpression::Binding {
-    //         name: "foo".to_string(),
-    //         value: boxparexpr!(ParenExpression::Cons {
-    //             car: Box::new(Expression::Number(42)),
-    //             cdr: Box::new(Expression::Number(99))
-    //         }),
-    //         body: boxparexpr!(ParenExpression::Car {
-    //             cons: Box::new(Expression::Identifier("foo".to_string()))
-    //         })
-    //     })
-    // );
+    // (≜ foo (∷ 42 99)
+    //     (← foo))
+    //
+    // = 42
+    compile_test!(
+        compile_cons_car,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "foo".to_string(),
+            value: boxparexpr!(ParenExpression::Cons {
+                car: Box::new(Expression::Number(42)),
+                cdr: Box::new(Expression::Number(99))
+            }),
+            body: boxparexpr!(ParenExpression::Car {
+                cons: Box::new(Expression::Identifier("foo".to_string()))
+            })
+        })
+    );
 
-    // // (≜ foo (∷ 99 42)
-    // //     (→ foo))
-    // //
-    // // = 42
-    // compile_test!(
-    //     compile_cons_cdr,
-    //     *boxparexpr!(ParenExpression::Binding {
-    //         name: "foo".to_string(),
-    //         value: boxparexpr!(ParenExpression::Cons {
-    //             car: Box::new(Expression::Number(99)),
-    //             cdr: Box::new(Expression::Number(42))
-    //         }),
-    //         body: boxparexpr!(ParenExpression::Cdr {
-    //             cons: Box::new(Expression::Identifier("foo".to_string()))
-    //         })
-    //     })
-    // );
+    // (≜ foo (∷ 99 42)
+    //     (→ foo))
+    //
+    // = 42
+    compile_test!(
+        compile_cons_cdr,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "foo".to_string(),
+            value: boxparexpr!(ParenExpression::Cons {
+                car: Box::new(Expression::Number(99)),
+                cdr: Box::new(Expression::Number(42))
+            }),
+            body: boxparexpr!(ParenExpression::Cdr {
+                cons: Box::new(Expression::Identifier("foo".to_string()))
+            })
+        })
+    );
 
     // // TODO test print cons
 
