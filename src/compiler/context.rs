@@ -2,63 +2,53 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use anyhow::{Result, bail};
 
+use crate::ast::BoxExpr;
+
 #[derive(Default)]
 /// Context the compiler needs to carry throughout the process.
 pub struct Context {
-    /// Identifiers mapped to an offset from the base pointer, at which they are stored.
-    bindings: HashMap<String, Vec<usize>>,
+    /// Identifiers mapped to an address.
+    /// Multiple addresses may be present to allow shadowing.
+    bindings: HashMap<String, Vec<String>>,
     /// Current offset from base pointer.
-    current_offset: usize,
+    stack_offset: usize,
     /// Number of labels so far created.
     labels: usize,
-    /// Base addresses that bindings are relative to. If empty, use `rbp`.
-    base_addrs: Vec<String>,
+}
+
+/// Contains a new context for a lambda.
+pub struct LambdaContext {
+    /// Instructions to run before using the context.
+    pub prologue: String,
+    /// The context itself.
+    pub context: Context,
+    /// Instructions to run after using the context.
+    pub epilogue: String,
 }
 
 impl Context {
-    /// Return the current base address.
-    pub fn base_addr(&self) -> &str {
-        if self.base_addrs.is_empty() {
-            "rbp"
-        } else {
-            self.base_addrs.last().unwrap()
-        }
-    }
-
-    /// Increase `rsp` offset from `rbp` by `num_bytes`.
-    fn bump_rsp_offset(&mut self, num_bytes: usize) -> usize {
-        self.current_offset += num_bytes;
-        self.current_offset
-    }
-
-    /// Return an offset address relative to the current stack base pointer.
-    fn offset_addr(&self, offset: usize) -> String {
-        format!("[{} - {}]", self.base_addr(), offset)
-    }
-
     /// Allocate `num_bytes` and return the offset address relative to the
-    /// current stack base pointer. Roughly shorthand for:
-    /// `ctx.offset_addr(ctx.stack_allocate(num_bytes))`.
+    /// current stack base pointer.
     pub fn stack_alloc(&mut self, num_bytes: usize) -> String {
-        let offset = self.bump_rsp_offset(num_bytes);
-        self.offset_addr(offset)
+        self.stack_offset += num_bytes;
+        format!("[rbp - {}]", self.stack_offset)
     }
 
     pub fn stack_free(&mut self, num_bytes: usize) {
-        self.current_offset -= num_bytes
+        self.stack_offset -= num_bytes
     }
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.
     /// Return their location in memory.
     pub fn bind(&mut self, ident: String) -> String {
-        let offset = self.bump_rsp_offset(8);
+        let addr = self.stack_alloc(8);
         match self.bindings.entry(ident) {
-            Entry::Occupied(mut entry) => entry.get_mut().push(offset),
+            Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
             Entry::Vacant(entry) => {
-                entry.insert(vec![offset]);
+                entry.insert(vec![addr.clone()]);
             }
         }
-        self.offset_addr(offset)
+        addr
     }
 
     /// Unbind the innermost binding for `ident`.
@@ -77,11 +67,7 @@ impl Context {
         if let Some(addrs) = self.bindings.get(ident)
             && !addrs.is_empty()
         {
-            return Ok(format!(
-                "[{} - {}]",
-                self.base_addr(),
-                addrs.last().unwrap().clone()
-            ));
+            return Ok(addrs.last().unwrap().clone());
         }
         bail!("Tried to use an unbound identifier: {ident}");
     }
