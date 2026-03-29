@@ -91,18 +91,22 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
     ];
 
     let mut offset = 8; // first qword of heap data is addr of body label
-    ctx.bind(arg, format!("[lambda_ctx + {}]", offset));
+
+    ctx.bind(arg, format!("[lambda_ctx + {}]", offset + 8));
+    offset += 16;
 
     for var in free_vars {
-        ctx.bind(var.to_string(), format!("[lambda_ctx + {offset}]"));
         prologue.push_str(&join![
-            cmd!("; copying {} to heap", var),
+            cmd!("; copying {} to lambda heap section", var),
+            // value
             cmd!("mov qword retval, {}", ctx.get(var)?),
+            cmd!("mov [lambda_ctx + {}], retval", offset + 8),
+            // type
             cmd!("lea rettype, {}", ctx.get(var)?),
-            cmd!("mov qword rettype, [rettype + 8]"),
-            cmd!("mov [heap_start + {}], retval", offset),
-            cmd!("mov [heap_start + {}], rettype", offset + 8)
+            cmd!("mov qword rettype, [rettype - 8]"),
+            cmd!("mov [lambda_ctx + {}], rettype", offset)
         ]);
+        ctx.bind(var.to_string(), format!("[lambda_ctx + {}]", offset + 8));
         offset += 16;
     }
 
@@ -150,8 +154,8 @@ pub fn compile_application(
         cmd!("mov lambda_ctx, retval"),
         cmd!("pop rettype"),
         cmd!("pop retval"),
-        cmd!("mov [lambda_ctx + 8], retval"),
-        cmd!("mov [lambda_ctx + 16], rettype"),
+        cmd!("mov [lambda_ctx + 8], rettype"),
+        cmd!("mov [lambda_ctx + 16], retval"),
         cmd!("call [lambda_ctx]")
     ])
 }

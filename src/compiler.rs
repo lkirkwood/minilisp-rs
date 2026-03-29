@@ -38,8 +38,8 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
     match expr {
         Expression::Number(num) => Ok(join![
             cmd!("; store number: {}", num),
-            cmd!("mov qword retval, {}", num),
-            cmd!("mov qword rettype, num_t"),
+            cmd!("mov retval, {}", num),
+            cmd!("mov rettype, qword num_t"),
             cmd!("; number stored")
         ]),
         Expression::Identifier(ident) => {
@@ -159,7 +159,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; stored cdr, return car address"),
                 cmd!("mov retval, rdi"),
                 cmd!("sub retval, 32"),
-                cmd!("mov rettype, cons_t"),
+                cmd!("mov rettype, qword cons_t"),
                 cmd!("; end cons")
             ])
         }
@@ -195,7 +195,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("jne {} ; type is not null, skip setting bool", skip_label),
                 cmd!("mov retval, 1"),
                 cmd!("{}:", skip_label),
-                cmd!("mov qword rettype, num_t")
+                cmd!("mov rettype, qword num_t")
             ])
         }
         ParenExpression::Lambda { arg, body } => compile_lambda(ctx, arg, body),
@@ -442,6 +442,9 @@ mod tests {
         Some(0)
     );
 
+    // ((λ foo 42))
+    //
+    // = 42
     compile_test!(
         compile_lambda_application,
         *boxparexpr!(ParenExpression::Application {
@@ -450,6 +453,67 @@ mod tests {
                 body: Box::new(Expression::Number(42))
             }),
             argument: Box::new(Expression::Null)
+        }),
+        Some(42)
+    );
+
+    // ((λ arg (+ arg 1)) 41)
+    //
+    // = 42
+    compile_test!(
+        compile_lambda_application_with_arg,
+        *boxparexpr!(ParenExpression::Application {
+            lambda: boxparexpr!(ParenExpression::Lambda {
+                arg: "arg".to_string(),
+                body: boxparexpr!(ParenExpression::Plus {
+                    first: Box::new(Expression::Number(1)),
+                    second: Box::new(Expression::Identifier("arg".to_string()))
+                })
+            }),
+            argument: Box::new(Expression::Number(41))
+        }),
+        Some(42)
+    );
+
+    // (≜ captured 42
+    //    ((λ arg captured) ∅)
+    //
+    // = 42
+    compile_test!(
+        compile_lambda_application_with_capture,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "captured".to_string(),
+            value: Box::new(Expression::Number(42)),
+            body: boxparexpr!(ParenExpression::Application {
+                lambda: boxparexpr!(ParenExpression::Lambda {
+                    arg: "arg".to_string(),
+                    body: Box::new(Expression::Identifier("captured".to_string()))
+                }),
+                argument: Box::new(Expression::Null)
+            })
+        }),
+        Some(42)
+    );
+
+    // (≜ captured 41
+    //    ((λ arg (+ arg captured)) 1)
+    //
+    // = 42
+    compile_test!(
+        compile_lambda_application_with_arg_and_capture,
+        *boxparexpr!(ParenExpression::Binding {
+            name: "captured".to_string(),
+            value: Box::new(Expression::Number(41)),
+            body: boxparexpr!(ParenExpression::Application {
+                lambda: boxparexpr!(ParenExpression::Lambda {
+                    arg: "arg".to_string(),
+                    body: boxparexpr!(ParenExpression::Plus {
+                        first: Box::new(Expression::Identifier("arg".to_string())),
+                        second: Box::new(Expression::Identifier("captured".to_string()))
+                    })
+                }),
+                argument: Box::new(Expression::Number(1))
+            })
         }),
         Some(42)
     );
