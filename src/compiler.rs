@@ -1,10 +1,13 @@
 mod context;
+mod lambda;
 
 use anyhow::Result;
+use lambda::{compile_application, compile_lambda};
 
 use crate::ast::{Expression, ParenExpression};
 use context::Context;
 
+#[macro_export]
 /// Format a string literal using format!,
 /// wrapping it in 4 leading spaces and a trailing newline.
 macro_rules! cmd {
@@ -13,6 +16,7 @@ macro_rules! cmd {
     };
 }
 
+#[macro_export]
 /// Join some strings with no separator.
 macro_rules! join {
     ($first:expr $(, $others:expr)*) => {
@@ -103,10 +107,11 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         }
         ParenExpression::Binding { name, value, body } => {
             let value_code = compile_expr(ctx, *value)?;
-            let _val_addr = ctx.bind(name.clone());
+            let _val_addr = ctx.stack_bind(name.clone());
             let _type_addr = ctx.stack_alloc(16);
             let body_code = compile_expr(ctx, *body)?;
             ctx.stack_free(16);
+            ctx.unbind(&name)?;
             Ok(join![
                 cmd!("; start binding"),
                 cmd!("; bind {}", name),
@@ -130,9 +135,10 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             Ok(join![
                 cmd!("; start cons"),
                 cmd!("; allocate heap space"),
-                cmd!("mov rax, 32"),
+                cmd!("mov rdx, 32"),
                 cmd!("call ensure_mem"),
                 cmd!("push heap_start"),
+                cmd!("add heap_start, 32"),
                 cmd!("; compute car"),
                 car_code,
                 cmd!("; store car on heap"),
@@ -192,60 +198,11 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("mov qword rettype, num_t")
             ])
         }
-        // ParenExpression::Lambda { arg, body } => {
-        //     // need to:
-        //     // + copy free vars to heap (later)
-        //     // + replace rbp with context base
-        //     // + write lambda instructions
-        //     // + write ptr to lambda to retval etc.
+        ParenExpression::Lambda { arg, body } => compile_lambda(ctx, arg, body),
+        ParenExpression::Application { lambda, argument } => {
+            compile_application(ctx, lambda, argument)
+        }
 
-        //     let lambda_addr = ctx.stack_addr(8);
-        //     let arg_addr = ctx.bind(arg.clone());
-        //     let start_label = ctx.new_label();
-        //     let skip_label = ctx.new_label();
-        //     let lambda_code = compile_expr(ctx, *body)?;
-        //     ctx.unbind(&arg)?;
-
-        //     Ok(join![
-        //         cmd!("; start lambda"),
-        //         cmd!("sub rsp, 16"),
-        //         cmd!("jmp {}", skip_label),
-        //         cmd!("{}:", start_label),
-        //         lambda_code,
-        //         cmd!("ret"),
-        //         cmd!("{}: ", skip_label),
-        //         cmd!("lea rdi, [{}]", start_label),
-        //         cmd!("mov {}, rdi", lambda_addr),
-        //         cmd!("lea rdi, {}", lambda_addr),
-        //         cmd!("add rdi, 8"),
-        //         cmd!("lea rdx, {}", arg_addr),
-        //         cmd!("mov [rdi], rdx"),
-        //         cmd!("lea retval, {}", lambda_addr),
-        //         cmd!("or retval, lambda_t"),
-        //         cmd!("; end lambda")
-        //     ])
-        // }
-        // ParenExpression::Application { lambda, argument } => {
-        //     let arg_addr = ctx.stack_addr(8);
-        //     Ok(join![
-        //         cmd!("; start application"),
-        //         cmd!("sub rsp, 8"),
-        //         cmd!(";; compute argument"),
-        //         compile_expr(ctx, *argument)?,
-        //         cmd!(";; argument computed"),
-        //         cmd!("mov {}, retval", arg_addr),
-        //         cmd!(";; compute lambda to apply"),
-        //         compile_expr(ctx, *lambda)?,
-        //         cmd!(";; lambda computed"),
-        //         cmd!("and retval, bottom_3_zero"),
-        //         cmd!(";; set argument"),
-        //         cmd!("mov rdx, {}", arg_addr),
-        //         cmd!("lea rdi, [retval + 8]"),
-        //         cmd!("mov rdi, [rdi]"),
-        //         cmd!("mov [rdi], rdx"),
-        //         cmd!("call [retval]")
-        //     ])
-        // }
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -485,15 +442,15 @@ mod tests {
         Some(0)
     );
 
-    // compile_test!(
-    //     compile_lambda_application,
-    //     *boxparexpr!(ParenExpression::Application {
-    //         lambda: boxparexpr!(ParenExpression::Lambda {
-    //             arg: "foo".to_string(),
-    //             body: Box::new(Expression::Number(42))
-    //         }),
-    //         argument: Box::new(Expression::Null)
-    //     }),
-    //     Some(42)
-    // );
+    compile_test!(
+        compile_lambda_application,
+        *boxparexpr!(ParenExpression::Application {
+            lambda: boxparexpr!(ParenExpression::Lambda {
+                arg: "foo".to_string(),
+                body: Box::new(Expression::Number(42))
+            }),
+            argument: Box::new(Expression::Null)
+        }),
+        Some(42)
+    );
 }

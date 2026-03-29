@@ -1,6 +1,17 @@
 use std::collections::HashSet;
 
-use crate::ast::{BoxExpr, Expression, ParenExpression};
+use anyhow::Result;
+
+use crate::{
+    ast::{BoxExpr, Expression, ParenExpression},
+    cmd,
+    compiler::compile_expr,
+    join,
+};
+
+use super::context::Context;
+
+// Free variable analysis
 
 /// Find the free variables referenced by the lambda.
 pub fn lambda_free_vars<'a, 'b>(arg: &'a str, body: &'b BoxExpr) -> HashSet<&'b str> {
@@ -57,6 +68,92 @@ fn expr_free_vars(expr: &BoxExpr) -> HashSet<&str> {
     }
 
     free_vars
+}
+
+// Emitting ASM
+
+/// Compile a lambda to ASM.
+pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<String> {
+    let free_vars = lambda_free_vars(&arg, &body);
+    // 8 bytes for value and 8 for type per free var,
+    // 8 bytes for address of body label, and 16 for arg value and type.
+    let heap_space = free_vars.len() * 16 + 24;
+    let body_label = ctx.new_label();
+    let epilogue_label = ctx.new_label();
+
+    let mut prologue = join![
+        cmd!("; start lambda prologue"),
+        cmd!("mov rdx, {}", heap_space),
+        cmd!("call ensure_mem"),
+        cmd!("mov lambda_ctx, heap_start"),
+        cmd!("lea rdx, [rel {}]", body_label),
+        cmd!("mov [lambda_ctx], rdx")
+    ];
+
+    let mut offset = 8; // first qword of heap data is addr of body label
+    ctx.bind(arg, format!("[lambda_ctx + {}]", offset));
+
+    for var in free_vars {
+        ctx.bind(var.to_string(), format!("[lambda_ctx + {offset}]"));
+        prologue.push_str(&join![
+            cmd!("; copying {} to heap", var),
+            cmd!("mov qword retval, {}", ctx.get(var)?),
+            cmd!("lea rettype, {}", ctx.get(var)?),
+            cmd!("mov qword rettype, [rettype + 8]"),
+            cmd!("mov [heap_start + {}], retval", offset),
+            cmd!("mov [heap_start + {}], rettype", offset + 8)
+        ]);
+        offset += 16;
+    }
+
+    prologue.push_str(&join![
+        cmd!("add heap_start, {}", offset),
+        cmd!("jmp {}", epilogue_label),
+        cmd!("; end lambda prologue")
+    ]);
+
+    let body_code = compile_expr(ctx, *body)?;
+
+    Ok(join![
+        cmd!("; start lambda"),
+        prologue,
+        cmd!("{}:", body_label),
+        body_code,
+        cmd!("ret"),
+        cmd!("; start lambda epilogue"),
+        cmd!("{}:", epilogue_label),
+        cmd!("mov qword retval, lambda_ctx"),
+        cmd!("mov qword rettype, lambda_t"),
+        cmd!("; end lambda")
+    ])
+}
+
+pub fn compile_application(
+    ctx: &mut Context,
+    lambda: BoxExpr,
+    argument: BoxExpr,
+) -> Result<String> {
+    let arg_code = compile_expr(ctx, *argument)?;
+    ctx.stack_alloc(16);
+    let lambda_code = compile_expr(ctx, *lambda)?;
+    ctx.stack_free(16);
+    Ok(join![
+        cmd!("; start lambda application"),
+        cmd!("; compute argument"),
+        arg_code,
+        cmd!("; store argument"),
+        cmd!("push retval"),
+        cmd!("push rettype"),
+        cmd!("; compute lambda"),
+        lambda_code,
+        cmd!("; set up lambda call"),
+        cmd!("mov lambda_ctx, retval"),
+        cmd!("pop rettype"),
+        cmd!("pop retval"),
+        cmd!("mov [lambda_ctx + 8], retval"),
+        cmd!("mov [lambda_ctx + 16], rettype"),
+        cmd!("call [lambda_ctx]")
+    ])
 }
 
 #[cfg(test)]

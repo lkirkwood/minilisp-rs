@@ -22,6 +22,8 @@ _start:
     %define retval          r13
     ;; type of retval
     %define rettype         r12
+    ;; lambda context heap base
+    %define lambda_ctx      r11
 
     ; page size (4KB)
     %define page            4096
@@ -53,30 +55,24 @@ _start:
 
     jmp main
 
+; checks there is at least rdx bytes left on the heap
+; allocates pages until there is
 ensure_mem:
-    add rax, heap_start
-    cmp rax, heap_end
-    jle .skip_alloc_until
-    call alloc_until
-    .skip_alloc_until:
+    add rdx, heap_start
+.check_size:
+    push rdx
+    cmp rdx, heap_end
+    ja  .alloc_page
+    pop rdx
     ret
-
-; allocate pages until heap_end is greater than rax
-alloc_until:
-    call alloc_page
-    cmp rax, heap_end
-    jle .stop_allocating
-    call alloc_page
-    .stop_allocating:
-    ret
-
-; allocate one page on heap
-alloc_page:
+.alloc_page:
+    mov rdi, heap_end
+    add rdi, page
     mov rax, sys_brk
-    mov rdi, page
-    add rdi, heap_end
     syscall
-    ret
+    mov heap_end, rax
+    pop rdx
+    jmp .check_size
 
 generic_error:
     exit 1
@@ -94,7 +90,8 @@ main:
 
     push retval
     mov rsi, rsp
-    mov byte dl, [type_size + rettype]
+    xor rdx, rdx
+    movzx rdx, byte [type_size + rettype]
 
     mov rax, sys_write
     ; set fd to 1 (stdout)

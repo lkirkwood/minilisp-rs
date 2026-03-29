@@ -2,8 +2,6 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use anyhow::{Result, bail};
 
-use crate::ast::BoxExpr;
-
 #[derive(Default)]
 /// Context the compiler needs to carry throughout the process.
 pub struct Context {
@@ -14,16 +12,6 @@ pub struct Context {
     stack_offset: usize,
     /// Number of labels so far created.
     labels: usize,
-}
-
-/// Contains a new context for a lambda.
-pub struct LambdaContext {
-    /// Instructions to run before using the context.
-    pub prologue: String,
-    /// The context itself.
-    pub context: Context,
-    /// Instructions to run after using the context.
-    pub epilogue: String,
 }
 
 impl Context {
@@ -40,15 +28,19 @@ impl Context {
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.
     /// Return their location in memory.
-    pub fn bind(&mut self, ident: String) -> String {
+    pub fn stack_bind(&mut self, ident: String) -> String {
         let addr = self.stack_alloc(8);
+        self.bind(ident, addr.clone());
+        addr
+    }
+
+    pub fn bind(&mut self, ident: String, addr: String) {
         match self.bindings.entry(ident) {
             Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
             Entry::Vacant(entry) => {
                 entry.insert(vec![addr.clone()]);
             }
         }
-        addr
     }
 
     /// Unbind the innermost binding for `ident`.
