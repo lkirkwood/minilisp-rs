@@ -14,7 +14,7 @@ use super::context::Context;
 // Free variable analysis
 
 /// Find the free variables referenced by the lambda.
-pub fn lambda_free_vars<'a, 'b>(arg: &'a str, body: &'b BoxExpr) -> HashSet<&'b str> {
+pub fn lambda_free_vars<'a>(arg: &str, body: &'a BoxExpr) -> HashSet<&'a str> {
     let mut free_vars = expr_free_vars(body);
     free_vars.remove(arg);
     free_vars
@@ -134,12 +134,12 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
 
 pub fn compile_application(
     ctx: &mut Context,
-    lambda: BoxExpr,
-    argument: BoxExpr,
+    lambda: Expression,
+    argument: Expression,
 ) -> Result<String> {
-    let arg_code = compile_expr(ctx, *argument)?;
+    let arg_code = compile_expr(ctx, argument)?;
     ctx.stack_alloc(16);
-    let lambda_code = compile_expr(ctx, *lambda)?;
+    let lambda_code = compile_expr(ctx, lambda)?;
     ctx.stack_free(16);
     Ok(join![
         cmd!("; start lambda application"),

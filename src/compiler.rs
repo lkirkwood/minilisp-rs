@@ -200,7 +200,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         }
         ParenExpression::Lambda { arg, body } => compile_lambda(ctx, arg, body),
         ParenExpression::Application { lambda, argument } => {
-            compile_application(ctx, lambda, argument)
+            compile_application(ctx, *lambda, *argument)
         }
 
         other => todo!("compile other parexprs like {other:?}"),

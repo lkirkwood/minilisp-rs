@@ -23,7 +23,7 @@ impl Context {
     }
 
     pub fn stack_free(&mut self, num_bytes: usize) {
-        self.stack_offset -= num_bytes
+        self.stack_offset -= num_bytes;
     }
 
     /// Allocate 8 bytes on the stack and bind `ident` to them.
