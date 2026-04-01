@@ -200,7 +200,6 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         ParenExpression::Application { lambda, argument } => {
             compile_application(ctx, *lambda, *argument)
         }
-
         ParenExpression::Condition { predicate, yes, no } => {
             let yes_label = ctx.new_label();
             let no_label = ctx.new_label();
@@ -218,6 +217,33 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 compile_expr(ctx, *no)?,
                 cmd!("{}:", finish_label),
                 cmd!("; end conditional")
+            ])
+        }
+        ParenExpression::Equals { first, second } => {
+            let not_equal_label = ctx.new_label();
+            let finish_label = ctx.new_label();
+            Ok(join![
+                cmd!("; start equals"),
+                cmd!("; first argument"),
+                compile_expr(ctx, *first)?,
+                cmd!("push retval"),
+                cmd!("push rettype"),
+                cmd!("; second argument"),
+                compile_expr(ctx, *second)?,
+                cmd!("pop rdx"),
+                cmd!("cmp rdx, rettype"),
+                cmd!("jne {} ; taking not equal branch", not_equal_label),
+                cmd!("pop rdx"),
+                cmd!("cmp rdx, retval"),
+                cmd!("jne {} ; taking not equal branch", not_equal_label),
+                cmd!("; equal branch"),
+                cmd!("mov retval, 1"),
+                cmd!("mov rettype, num_t"),
+                cmd!("jmp {}", finish_label),
+                cmd!("{}: ; not equal branch", not_equal_label),
+                cmd!("xor retval, retval"),
+                cmd!("mov rettype, num_t"),
+                cmd!("{}:", finish_label)
             ])
         }
         other => todo!("compile other parexprs like {other:?}"),
@@ -577,4 +603,6 @@ mod tests {
     );
 
     compile_str!(compile_conditional, "(? 0 99 42)");
+
+    compile_str!(compile_equals, "(= 42 42)", Some(1));
 }
