@@ -201,6 +201,25 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             compile_application(ctx, *lambda, *argument)
         }
 
+        ParenExpression::Condition { predicate, yes, no } => {
+            let yes_label = ctx.new_label();
+            let no_label = ctx.new_label();
+            let finish_label = ctx.new_label();
+            Ok(join![
+                cmd!("; start conditional"),
+                compile_expr(ctx, *predicate)?,
+                cmd!("cmp retval, 0"),
+                cmd!("jne {}", yes_label),
+                cmd!("jmp {}", no_label),
+                cmd!("{}: ; yes branch", yes_label),
+                compile_expr(ctx, *yes)?,
+                cmd!("jmp {}", finish_label),
+                cmd!("{}: ; no branch", no_label),
+                compile_expr(ctx, *no)?,
+                cmd!("{}:", finish_label),
+                cmd!("; end conditional")
+            ])
+        }
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -556,4 +575,6 @@ mod tests {
                     (+ x y)))
             ((add 1) 41))"
     );
+
+    compile_str!(compile_conditional, "(? 0 99 42)");
 }
