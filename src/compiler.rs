@@ -103,6 +103,24 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; end monus")
             ])
         }
+        ParenExpression::Times { first, second } => {
+            let first = compile_expr(ctx, *first)?;
+            let second = compile_expr(ctx, *second)?;
+            Ok(join![
+                cmd!("; begin times"),
+                cmd!("; compute first times operand"),
+                first,
+                cmd!("; store first times operand"),
+                cmd!("mov [tmp_val], retval"),
+                cmd!("; compute second times operand"),
+                second,
+                cmd!("mov rax, [tmp_val]"),
+                cmd!("mul retval"),
+                cmd!("mov retval, rax"),
+                cmd!("jc generic_error"),
+                cmd!("; end times")
+            ])
+        }
         ParenExpression::Binding { name, value, body } => {
             let value_code = compile_expr(ctx, *value)?;
             let _val_addr = ctx.stack_bind(name.clone());
@@ -427,6 +445,8 @@ mod tests {
         })),
         Some(0)
     );
+
+    compile_str!(compile_times, "(× 21 2)");
 
     // (≜ foo 42 foo)
     //
