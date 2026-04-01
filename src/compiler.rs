@@ -625,4 +625,25 @@ mod tests {
     compile_str!(compile_conditional, "(? 0 99 42)");
 
     compile_str!(compile_equals, "(= 42 42)", Some(1));
+
+    compile_str!(
+        compile_omega_comb_lazily,
+        "(≜ omega-combinator
+            ((λ x (x x)) (λ x (x x)))
+            ((λ x 42) omega-combinator))"
+    );
+
+    compile_str!(
+        compile_y_combinator_factorial,
+        "(≜ Y
+            (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+            (≜ factorial
+                (Y (λ f
+                    (λ n
+                        (? (= n 0)
+                            1
+                            (× n (f (− n 1)))))))
+                (factorial 5)))",
+        Some(120)
+    );
 }
