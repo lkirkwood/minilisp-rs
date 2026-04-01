@@ -85,9 +85,8 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
         cmd!("; start lambda prologue"),
         cmd!("mov rdx, {}", heap_space),
         cmd!("call ensure_mem"),
-        cmd!("mov lambda_ctx, heap_start"),
         cmd!("lea rdx, [rel {}]", body_label),
-        cmd!("mov [lambda_ctx], rdx")
+        cmd!("mov [heap_start], rdx")
     ];
 
     let mut offset = 8; // first qword of heap data is addr of body label
@@ -96,21 +95,28 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
     offset += 16;
 
     for var in free_vars {
+        let addr = ctx.get(var)?;
         prologue.push_str(&join![
             cmd!("; copying {} to lambda heap section", var),
             // value
-            cmd!("mov qword retval, {}", ctx.get(var)?),
-            cmd!("mov [lambda_ctx + {}], retval", offset + 8),
+            cmd!("mov qword retval, {}", addr),
+            cmd!("mov [heap_start + {}], retval", offset + 8),
             // type
-            cmd!("lea rettype, {}", ctx.get(var)?),
+            cmd!("lea rettype, {}", addr),
             cmd!("mov qword rettype, [rettype - 8]"),
-            cmd!("mov [lambda_ctx + {}], rettype", offset)
+            cmd!("mov [heap_start + {}], rettype", offset)
         ]);
+
         ctx.bind(var.to_string(), format!("[lambda_ctx + {}]", offset + 8));
         offset += 16;
     }
 
     prologue.push_str(&join![
+        cmd!("push heap_start"),
+        cmd!(
+            "; allocate for {} vars, input arg, and function ptr",
+            (offset - 24) / 16
+        ),
         cmd!("add heap_start, {}", offset),
         cmd!("jmp {}", epilogue_label),
         cmd!("; end lambda prologue")
@@ -121,12 +127,14 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
     Ok(join![
         cmd!("; start lambda"),
         prologue,
+        cmd!("; start body of lambda"),
         cmd!("{}:", body_label),
         body_code,
         cmd!("ret"),
+        cmd!("; end body of lambda"),
         cmd!("; start lambda epilogue"),
         cmd!("{}:", epilogue_label),
-        cmd!("mov qword retval, lambda_ctx"),
+        cmd!("pop retval ; old start of heap"),
         cmd!("mov qword rettype, lambda_t"),
         cmd!("; end lambda")
     ])

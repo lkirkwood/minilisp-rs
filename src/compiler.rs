@@ -46,11 +46,9 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
             let addr = ctx.get(&ident)?;
             Ok(join![
                 cmd!("; return identifier {}", ident),
-                // load address of value into rax
-                cmd!("mov retval, {}", addr),
                 cmd!("lea rdi, {}", addr),
-                cmd!("sub rdi, 8"),
-                cmd!("mov rettype, [rdi]"),
+                cmd!("mov retval, [rdi]"),
+                cmd!("mov rettype, [rdi - 8]"),
                 cmd!("; {} returned", ident)
             ])
         }
@@ -211,7 +209,11 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
 mod tests {
     use std::{fs, process::Command, u64};
 
-    use crate::ast::{Expression, ParenExpression};
+    use crate::{
+        ast::{Expression, ParenExpression},
+        parser::parse,
+        tokeniser::tokenise,
+    };
 
     use super::compile;
 
@@ -278,6 +280,38 @@ mod tests {
             fn $name() {
                 let filename = stringify!($name);
                 write_asm_file($expr, &filename);
+                run_asm_file(&filename, $code, $output)
+            }
+        };
+    }
+
+    macro_rules! compile_str {
+        ($name:ident, $str:expr) => {
+            #[test]
+            fn $name() {
+                let ast = parse(tokenise($str).unwrap()).unwrap();
+                let filename = stringify!($name);
+                write_asm_file(ast, &filename);
+                run_asm_file(&filename, 0, Some(42))
+            }
+        };
+
+        ($name:ident, $str:expr, $output:expr) => {
+            #[test]
+            fn $name() {
+                let ast = parse(tokenise($str).unwrap()).unwrap();
+                let filename = stringify!($name);
+                write_asm_file(ast, &filename);
+                run_asm_file(&filename, 0, $output)
+            }
+        };
+
+        ($name:ident, $str:expr, $code:expr, $output:expr) => {
+            #[test]
+            fn $name() {
+                let ast = parse(tokenise($str).unwrap()).unwrap();
+                let filename = stringify!($name);
+                write_asm_file(ast, &filename);
                 run_asm_file(&filename, $code, $output)
             }
         };
@@ -453,8 +487,7 @@ mod tests {
                 body: Box::new(Expression::Number(42))
             }),
             argument: Box::new(Expression::Null)
-        }),
-        Some(42)
+        })
     );
 
     // ((λ arg (+ arg 1)) 41)
@@ -471,8 +504,7 @@ mod tests {
                 })
             }),
             argument: Box::new(Expression::Number(41))
-        }),
-        Some(42)
+        })
     );
 
     // (≜ captured 42
@@ -491,8 +523,7 @@ mod tests {
                 }),
                 argument: Box::new(Expression::Null)
             })
-        }),
-        Some(42)
+        })
     );
 
     // (≜ captured 41
@@ -514,7 +545,15 @@ mod tests {
                 }),
                 argument: Box::new(Expression::Number(1))
             })
-        }),
-        Some(42)
+        })
+    );
+
+    compile_str!(
+        compile_currying,
+        "(≜ add
+            (λ x
+                (λ y
+                    (+ x y)))
+            ((add 1) 41))"
     );
 }

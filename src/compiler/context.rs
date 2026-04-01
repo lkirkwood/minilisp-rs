@@ -36,9 +36,9 @@ impl Context {
 
     pub fn bind(&mut self, ident: String, addr: String) {
         match self.bindings.entry(ident) {
-            Entry::Occupied(mut entry) => entry.get_mut().push(addr.clone()),
+            Entry::Occupied(mut entry) => entry.get_mut().push(addr),
             Entry::Vacant(entry) => {
-                entry.insert(vec![addr.clone()]);
+                entry.insert(vec![addr]);
             }
         }
     }
