@@ -86,7 +86,9 @@ pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) 
     let mut prologue = join![
         cmd!("; start lambda prologue"),
         cmd!("mov rdx, {}", heap_space),
+        cmd!("push lambda_ctx"),
         cmd!("call ensure_mem"),
+        cmd!("pop lambda_ctx"),
         cmd!("lea rdx, [rel {}]", body_label),
         cmd!("mov [heap_start], rdx")
     ];
