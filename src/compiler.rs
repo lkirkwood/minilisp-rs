@@ -98,11 +98,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
 mod tests {
     use std::{fs, process::Command, u64};
 
-    use crate::{
-        ast::{Expression, ParenExpression},
-        parser::parse,
-        tokeniser::tokenise,
-    };
+    use crate::{ast::Expression, parser::parse, tokeniser::tokenise};
 
     use super::compile;
 
@@ -145,35 +141,6 @@ mod tests {
         }
     }
 
-    macro_rules! compile_test {
-        ($name:ident, $expr:expr) => {
-            #[test]
-            fn $name() {
-                let filename = stringify!($name);
-                write_asm_file($expr, &filename);
-                run_asm_file(&filename, 0, Some(42))
-            }
-        };
-
-        ($name:ident, $expr:expr, $output:expr) => {
-            #[test]
-            fn $name() {
-                let filename = stringify!($name);
-                write_asm_file($expr, &filename);
-                run_asm_file(&filename, 0, $output)
-            }
-        };
-
-        ($name:ident, $expr:expr, $code:expr, $output:expr) => {
-            #[test]
-            fn $name() {
-                let filename = stringify!($name);
-                write_asm_file($expr, &filename);
-                run_asm_file(&filename, $code, $output)
-            }
-        };
-    }
-
     macro_rules! compile_str {
         ($name:ident, $str:expr) => {
             #[test]
@@ -208,237 +175,61 @@ mod tests {
 
     //// Actual tests ////
 
-    // 42
-    //
-    // = 42
-    compile_test!(compile_num, Expression::Number(42));
+    compile_str!(compile_num, "42");
 
-    // (+ 41 1)
-    //
-    // = 42
-    compile_test!(
-        compile_plus,
-        Expression::Paren(Box::new(ParenExpression::Plus {
-            first: Box::new(Expression::Number(41)),
-            second: Box::new(Expression::Number(1))
-        }))
-    );
+    compile_str!(compile_plus, "(+ 41 1)");
 
     // (+ INT_MAX 1)
     //
     // = overflow error
-    compile_test!(
+    compile_str!(
         compile_plus_overflow_error,
-        Expression::Paren(Box::new(ParenExpression::Plus {
-            first: Box::new(Expression::Number(u64::MAX)),
-            second: Box::new(Expression::Number(1))
-        })),
+        &format!("(+ {} 1)", u64::MAX),
         1,
         None
     );
 
-    // (+ INT_MAX 0)
-    //
-    // = INT_MAX
-    compile_test!(
+    compile_str!(
         compile_plus_overflow_almost,
-        Expression::Paren(Box::new(ParenExpression::Plus {
-            first: Box::new(Expression::Number(u64::MAX)),
-            second: Box::new(Expression::Number(0))
-        })),
+        &format!("(+ {} 0)", u64::MAX),
         Some(u64::MAX)
     );
 
-    // (− 43 1)
-    //
-    // = 42
-    compile_test!(
-        compile_monus,
-        Expression::Paren(Box::new(ParenExpression::Monus {
-            first: Box::new(Expression::Number(43)),
-            second: Box::new(Expression::Number(1))
-        }))
-    );
+    compile_str!(compile_monus, "(− 43 1)");
 
-    // (− 1 42)
-    //
-    // = 0
-    compile_test!(
-        compile_monus_saturates,
-        Expression::Paren(Box::new(ParenExpression::Monus {
-            first: Box::new(Expression::Number(1)),
-            second: Box::new(Expression::Number(42))
-        })),
-        Some(0)
-    );
+    compile_str!(compile_monus_saturates, "(− 1 42)", Some(0));
 
     compile_str!(compile_times, "(× 21 2)");
 
     compile_str!(compile_equals, "(= 42 42)", Some(1));
 
-    // (≜ foo 42 foo)
-    //
-    // = 42
-    compile_test!(
-        compile_ident,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: Box::new(Expression::Number(42)),
-            body: Box::new(Expression::Identifier("foo".to_string()))
-        })
-    );
+    compile_str!(compile_ident, "(≜ foo 42 foo)");
 
-    // (≜ foo 41
-    //     (≜ bar 1
-    //         (+ foo bar)))
-    //
-    // = 42
-    compile_test!(
-        compile_ident_plus,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: Box::new(Expression::Number(41)),
-            body: boxparexpr!(ParenExpression::Binding {
-                name: "bar".to_string(),
-                value: Box::new(Expression::Number(1)),
-                body: boxparexpr!(ParenExpression::Plus {
-                    first: Box::new(Expression::Identifier("foo".to_string())),
-                    second: Box::new(Expression::Identifier("bar".to_string()))
-                })
-            })
-        })
-    );
+    compile_str!(compile_ident_plus, "(≜ foo 41 (≜ bar 1 (+ foo bar)))");
 
-    // (≜ foo (∷ 42 99)
-    //     (← foo))
-    //
-    // = 42
-    compile_test!(
-        compile_cons_car,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(Expression::Number(42)),
-                cdr: Box::new(Expression::Number(99))
-            }),
-            body: boxparexpr!(ParenExpression::Car {
-                cons: Box::new(Expression::Identifier("foo".to_string()))
-            })
-        })
-    );
+    compile_str!(compile_cons_car, "(≜ foo (∷ 42 99) (← foo))");
 
-    // (≜ foo (∷ 99 42)
-    //     (→ foo))
-    //
-    // = 42
-    compile_test!(
-        compile_cons_cdr,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "foo".to_string(),
-            value: boxparexpr!(ParenExpression::Cons {
-                car: Box::new(Expression::Number(99)),
-                cdr: Box::new(Expression::Number(42))
-            }),
-            body: boxparexpr!(ParenExpression::Cdr {
-                cons: Box::new(Expression::Identifier("foo".to_string()))
-            })
-        })
-    );
+    compile_str!(compile_cons_cdr, "(≜ foo (∷ 99 42) (→ foo))");
 
-    // // TODO test print cons
+    compile_str!(compile_null_check, "(∘ ∅)", Some(1));
 
-    // (∘ ∅)
-    //
-    // = 1
-    compile_test!(
-        compile_null_check,
-        *boxparexpr!(ParenExpression::NullCheck {
-            value: Box::new(Expression::Null)
-        }),
-        Some(1)
-    );
+    compile_str!(compile_null_check_on_number, "(∘ 42)", Some(0));
 
-    // (∘ 42)
-    //
-    // = 0
-    compile_test!(
-        compile_null_check_on_number,
-        *boxparexpr!(ParenExpression::NullCheck {
-            value: Box::new(Expression::Number(42))
-        }),
-        Some(0)
-    );
+    compile_str!(compile_lambda_application, "((λ foo 42) ∅)");
 
-    // ((λ foo 42))
-    //
-    // = 42
-    compile_test!(
-        compile_lambda_application,
-        *boxparexpr!(ParenExpression::Application {
-            lambda: boxparexpr!(ParenExpression::Lambda {
-                arg: "foo".to_string(),
-                body: Box::new(Expression::Number(42))
-            }),
-            argument: Box::new(Expression::Null)
-        })
-    );
-
-    // ((λ arg (+ arg 1)) 41)
-    //
-    // = 42
-    compile_test!(
+    compile_str!(
         compile_lambda_application_with_arg,
-        *boxparexpr!(ParenExpression::Application {
-            lambda: boxparexpr!(ParenExpression::Lambda {
-                arg: "arg".to_string(),
-                body: boxparexpr!(ParenExpression::Plus {
-                    first: Box::new(Expression::Number(1)),
-                    second: Box::new(Expression::Identifier("arg".to_string()))
-                })
-            }),
-            argument: Box::new(Expression::Number(41))
-        })
+        "((λ arg (+ arg 1)) 41)"
     );
 
-    // (≜ captured 42
-    //    ((λ arg captured) ∅)
-    //
-    // = 42
-    compile_test!(
+    compile_str!(
         compile_lambda_application_with_capture,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "captured".to_string(),
-            value: Box::new(Expression::Number(42)),
-            body: boxparexpr!(ParenExpression::Application {
-                lambda: boxparexpr!(ParenExpression::Lambda {
-                    arg: "arg".to_string(),
-                    body: Box::new(Expression::Identifier("captured".to_string()))
-                }),
-                argument: Box::new(Expression::Null)
-            })
-        })
+        "(≜ captured 42 ((λ arg captured) ∅))"
     );
 
-    // (≜ captured 41
-    //    ((λ arg (+ arg captured)) 1)
-    //
-    // = 42
-    compile_test!(
+    compile_str!(
         compile_lambda_application_with_arg_and_capture,
-        *boxparexpr!(ParenExpression::Binding {
-            name: "captured".to_string(),
-            value: Box::new(Expression::Number(41)),
-            body: boxparexpr!(ParenExpression::Application {
-                lambda: boxparexpr!(ParenExpression::Lambda {
-                    arg: "arg".to_string(),
-                    body: boxparexpr!(ParenExpression::Plus {
-                        first: Box::new(Expression::Identifier("arg".to_string())),
-                        second: Box::new(Expression::Identifier("captured".to_string()))
-                    })
-                }),
-                argument: Box::new(Expression::Number(1))
-            })
-        })
+        "(≜ captured 41 ((λ arg (+ arg captured)) 1))"
     );
 
     compile_str!(
