@@ -1,10 +1,16 @@
+mod arithmetic;
 mod bindings;
+mod cons;
 mod context;
 mod lambda;
+mod logic;
 
 use anyhow::Result;
+use arithmetic::{compile_equals, compile_monus, compile_plus, compile_times};
 use bindings::{compile_binding, compile_ident};
+use cons::{compile_car, compile_cdr, compile_cons};
 use lambda::{compile_application, compile_lambda};
+use logic::{compile_condition, compile_null_check};
 
 use crate::ast::{Expression, ParenExpression};
 use context::Context;
@@ -57,194 +63,23 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
 #[allow(clippy::similar_names)]
 fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String> {
     match parexpr {
-        ParenExpression::Plus { first, second } => {
-            let first = compile_expr(ctx, *first)?;
-            ctx.stack_alloc(8);
-            let second = compile_expr(ctx, *second)?;
-            ctx.stack_free(8);
-            Ok(join![
-                cmd!("; begin plus"),
-                cmd!("; compute first plus operand"),
-                first,
-                cmd!("; store first plus operand"),
-                cmd!("push retval"),
-                cmd!("; compute second plus operand"),
-                second,
-                cmd!("pop rax"),
-                cmd!("add retval, rax"),
-                cmd!("jc generic_error"),
-                cmd!("; end plus")
-            ])
-        }
-        ParenExpression::Monus { first, second } => {
-            let calc_label = ctx.new_label();
-            let end_label = ctx.new_label();
-            let second = compile_expr(ctx, *second)?;
-            ctx.stack_alloc(8);
-            let first = compile_expr(ctx, *first)?;
-            ctx.stack_free(8);
-            Ok(join![
-                cmd!("; begin monus"),
-                cmd!("; compute second monus operand first"),
-                second,
-                cmd!("; store second monus operand"),
-                cmd!("push retval"),
-                cmd!("; compute first monus operand now"),
-                first,
-                cmd!("pop rax"),
-                cmd!("cmp retval, rax"),
-                cmd!("jg {}", calc_label),
-                cmd!("xor retval, retval"),
-                cmd!("jmp {}", end_label),
-                cmd!("{}: ; perform calculation", calc_label),
-                cmd!("sub retval, rax"),
-                cmd!("{}: ; end of calculation", end_label),
-                cmd!("; end monus")
-            ])
-        }
-        ParenExpression::Times { first, second } => {
-            let first = compile_expr(ctx, *first)?;
-            let second = compile_expr(ctx, *second)?;
-            Ok(join![
-                cmd!("; begin times"),
-                cmd!("; compute first times operand"),
-                first,
-                cmd!("; store first times operand"),
-                cmd!("push retval"),
-                cmd!("; compute second times operand"),
-                second,
-                cmd!("pop rax"),
-                cmd!("mul retval"),
-                cmd!("mov retval, rax"),
-                cmd!("jc generic_error"),
-                cmd!("; end times")
-            ])
-        }
+        ParenExpression::Plus { first, second } => compile_plus(ctx, *first, *second),
+        ParenExpression::Monus { first, second } => compile_monus(ctx, *first, *second),
+        ParenExpression::Times { first, second } => compile_times(ctx, *first, *second),
+        ParenExpression::Equals { first, second } => compile_equals(ctx, *first, *second),
         ParenExpression::Binding { name, value, body } => {
             compile_binding(ctx, &name, *value, *body)
         }
-        ParenExpression::Cons { car, cdr } => {
-            let _heap_start = ctx.stack_alloc(8);
-            let car_code = compile_expr(ctx, *car)?;
-            let cdr_code = compile_expr(ctx, *cdr)?;
-            ctx.stack_free(8);
-            Ok(join![
-                cmd!("; start cons"),
-                cmd!("; allocate heap space"),
-                cmd!("mov rdx, 32"),
-                cmd!("push lambda_ctx"),
-                cmd!("call ensure_mem"),
-                cmd!("pop lambda_ctx"),
-                cmd!("push heap_start"),
-                cmd!("add heap_start, 32"),
-                cmd!("; compute car"),
-                car_code,
-                cmd!("; store car on heap"),
-                cmd!("pop rdi"),
-                cmd!("mov [rdi], retval"),
-                cmd!("add rdi, 8"),
-                cmd!("mov [rdi], rettype"),
-                cmd!("add rdi, 8"),
-                cmd!("push rdi"),
-                cmd!("; stored car, compute cdr"),
-                cdr_code,
-                cmd!("; store cdr"),
-                cmd!("pop rdi"),
-                cmd!("mov [rdi], retval"),
-                cmd!("add rdi, 8"),
-                cmd!("mov [rdi], rettype"),
-                cmd!("add rdi, 8"),
-                cmd!("; stored cdr, return car address"),
-                cmd!("mov retval, rdi"),
-                cmd!("sub retval, 32"),
-                cmd!("mov rettype, qword cons_t"),
-                cmd!("; end cons")
-            ])
-        }
-        ParenExpression::Car { cons } => Ok(join![
-            compile_expr(ctx, *cons)?,
-            cmd!("; get car from cons"),
-            cmd!("mov rdi, retval"),
-            cmd!("add rdi, 8"),
-            cmd!("mov retval, [retval]"),
-            cmd!("mov rettype, [rdi]"),
-            cmd!("; end car")
-        ]),
-        ParenExpression::Cdr { cons } => Ok(join![
-            compile_expr(ctx, *cons)?,
-            cmd!("; get cdr from cons"),
-            cmd!("add retval, 16"),
-            cmd!("mov rdi, retval"),
-            cmd!("add rdi, 8"),
-            cmd!("mov retval, [retval]"),
-            cmd!("mov rettype, [rdi]"),
-            cmd!("; end cdr")
-        ]),
-        ParenExpression::NullCheck { value } => {
-            let value_code = compile_expr(ctx, *value)?;
-            let skip_label = ctx.new_label();
-            Ok(join![
-                value_code,
-                cmd!("; start null check"),
-                cmd!("cmp retval, 0"),
-                cmd!("xor retval, retval"),
-                cmd!("jne {} ; value is not null, skip setting bool", skip_label),
-                cmd!("cmp rettype, 0"),
-                cmd!("jne {} ; type is not null, skip setting bool", skip_label),
-                cmd!("mov retval, 1"),
-                cmd!("{}:", skip_label),
-                cmd!("mov rettype, qword num_t")
-            ])
-        }
+        ParenExpression::Cons { car, cdr } => compile_cons(ctx, *car, *cdr),
+        ParenExpression::Car { cons } => compile_car(ctx, *cons),
+        ParenExpression::Cdr { cons } => compile_cdr(ctx, *cons),
         ParenExpression::Lambda { arg, body } => compile_lambda(ctx, Some(arg), *body),
         ParenExpression::Application { lambda, argument } => {
             compile_application(ctx, *lambda, *argument)
         }
+        ParenExpression::NullCheck { value } => compile_null_check(ctx, *value),
         ParenExpression::Condition { predicate, yes, no } => {
-            let yes_label = ctx.new_label();
-            let no_label = ctx.new_label();
-            let finish_label = ctx.new_label();
-            Ok(join![
-                cmd!("; start conditional"),
-                compile_expr(ctx, *predicate)?,
-                cmd!("cmp retval, 0"),
-                cmd!("jne {}", yes_label),
-                cmd!("jmp {}", no_label),
-                cmd!("{}: ; yes branch", yes_label),
-                compile_expr(ctx, *yes)?,
-                cmd!("jmp {}", finish_label),
-                cmd!("{}: ; no branch", no_label),
-                compile_expr(ctx, *no)?,
-                cmd!("{}:", finish_label),
-                cmd!("; end conditional")
-            ])
-        }
-        ParenExpression::Equals { first, second } => {
-            let not_equal_label = ctx.new_label();
-            let finish_label = ctx.new_label();
-            Ok(join![
-                cmd!("; start equals"),
-                cmd!("; first argument"),
-                compile_expr(ctx, *first)?,
-                cmd!("push retval"),
-                cmd!("push rettype"),
-                cmd!("; second argument"),
-                compile_expr(ctx, *second)?,
-                cmd!("pop rdx"),
-                cmd!("cmp rdx, rettype"),
-                cmd!("jne {} ; taking not equal branch", not_equal_label),
-                cmd!("pop rdx"),
-                cmd!("cmp rdx, retval"),
-                cmd!("jne {} ; taking not equal branch", not_equal_label),
-                cmd!("; equal branch"),
-                cmd!("mov retval, 1"),
-                cmd!("mov rettype, num_t"),
-                cmd!("jmp {}", finish_label),
-                cmd!("{}: ; not equal branch", not_equal_label),
-                cmd!("xor retval, retval"),
-                cmd!("mov rettype, num_t"),
-                cmd!("{}:", finish_label)
-            ])
+            compile_condition(ctx, *predicate, *yes, *no)
         }
         other => todo!("compile other parexprs like {other:?}"),
     }
