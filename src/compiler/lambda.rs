@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use crate::{
-    ast::{BoxExpr, Expression, ParenExpression},
+    ast::{Expression, ParenExpression},
     cmd,
     compiler::compile_expr,
     join,
@@ -14,18 +14,20 @@ use super::context::Context;
 // Free variable analysis
 
 /// Find the free variables referenced by the lambda.
-pub fn lambda_free_vars<'a>(arg: &str, body: &'a BoxExpr) -> HashSet<&'a str> {
+pub fn lambda_free_vars<'a>(arg: Option<&str>, body: &'a Expression) -> HashSet<&'a str> {
     let mut free_vars = expr_free_vars(body);
-    free_vars.remove(arg);
+    if let Some(arg) = arg {
+        free_vars.remove(arg);
+    }
     free_vars
 }
 
-fn expr_free_vars(expr: &BoxExpr) -> HashSet<&str> {
+fn expr_free_vars(expr: &Expression) -> HashSet<&str> {
     let mut free_vars = HashSet::new();
 
-    if let Expression::Identifier(ident) = &**expr {
+    if let Expression::Identifier(ident) = expr {
         free_vars.insert(ident.as_str());
-    } else if let Expression::Paren(parexpr) = &**expr {
+    } else if let Expression::Paren(parexpr) = expr {
         match &**parexpr {
             ParenExpression::Plus { first, second }
             | ParenExpression::Monus { first, second }
@@ -62,7 +64,7 @@ fn expr_free_vars(expr: &BoxExpr) -> HashSet<&str> {
                 free_vars.extend(expr_free_vars(argument));
             }
             ParenExpression::Lambda { arg, body } => {
-                free_vars.extend(lambda_free_vars(arg, body));
+                free_vars.extend(lambda_free_vars(Some(arg), body));
             }
         }
     }
@@ -73,8 +75,8 @@ fn expr_free_vars(expr: &BoxExpr) -> HashSet<&str> {
 // Emitting ASM
 
 /// Compile a lambda to ASM.
-pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<String> {
-    let free_vars = lambda_free_vars(&arg, &body);
+pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) -> Result<String> {
+    let free_vars = lambda_free_vars(arg.as_ref().map(|s| s.as_str()), &body);
     // 8 bytes for value and 8 for type per free var,
     // 8 bytes for address of body label, and 16 for arg value and type.
     let heap_space = free_vars.len() * 16 + 24;
@@ -91,38 +93,35 @@ pub fn compile_lambda(ctx: &mut Context, arg: String, body: BoxExpr) -> Result<S
 
     let mut offset = 8; // first qword of heap data is addr of body label
 
-    ctx.bind(arg, format!("[lambda_ctx + {}]", offset + 8));
-    offset += 16;
+    if let Some(arg) = arg {
+        ctx.bind(arg, format!("[lambda_ctx + {}]", offset));
+        offset += 8;
+    }
 
     for var in free_vars {
         let addr = ctx.get(var)?;
         prologue.push_str(&join![
-            cmd!("; copying {} to lambda heap section", var),
-            // value
+            cmd!("; copying thunk ptr for {} to lambda heap section", var),
             cmd!("mov qword retval, {}", addr),
-            cmd!("mov [heap_start + {}], retval", offset + 8),
-            // type
-            cmd!("lea rettype, {}", addr),
-            cmd!("mov qword rettype, [rettype - 8]"),
-            cmd!("mov [heap_start + {}], rettype", offset)
+            cmd!("mov [heap_start + {}], retval", offset)
         ]);
 
-        ctx.bind(var.to_string(), format!("[lambda_ctx + {}]", offset + 8));
-        offset += 16;
+        ctx.bind(var.to_string(), format!("[lambda_ctx + {}]", offset));
+        offset += 8;
     }
 
     prologue.push_str(&join![
         cmd!("push heap_start"),
         cmd!(
-            "; allocate for {} vars, input arg, and function ptr",
-            (offset - 24) / 16
+            "; allocate for {} vars (including input) and function ptr",
+            (offset - 8) / 8
         ),
         cmd!("add heap_start, {}", offset),
         cmd!("jmp {}", epilogue_label),
         cmd!("; end lambda prologue")
     ]);
 
-    let body_code = compile_expr(ctx, *body)?;
+    let body_code = compile_expr(ctx, body)?;
 
     Ok(join![
         cmd!("; start lambda"),
@@ -145,25 +144,22 @@ pub fn compile_application(
     lambda: Expression,
     argument: Expression,
 ) -> Result<String> {
-    let arg_code = compile_expr(ctx, argument)?;
-    ctx.stack_alloc(16);
     let lambda_code = compile_expr(ctx, lambda)?;
-    ctx.stack_free(16);
+    ctx.stack_alloc(8);
+    let arg_thunk = compile_lambda(ctx, None, argument)?;
+    ctx.stack_free(8);
     Ok(join![
         cmd!("; start lambda application"),
-        cmd!("; compute argument"),
-        arg_code,
-        cmd!("; store argument"),
-        cmd!("push retval"),
-        cmd!("push rettype"),
         cmd!("; compute lambda"),
         lambda_code,
+        cmd!("; store lambda pointer"),
+        cmd!("push retval"),
+        cmd!("; create arg thunk"),
+        arg_thunk,
         cmd!("; set up lambda call"),
-        cmd!("mov lambda_ctx, retval"),
-        cmd!("pop rettype"),
-        cmd!("pop retval"),
-        cmd!("mov [lambda_ctx + 8], rettype"),
-        cmd!("mov [lambda_ctx + 16], retval"),
+        cmd!("mov rdx, retval"),
+        cmd!("pop lambda_ctx"),
+        cmd!("mov [lambda_ctx + 8], rdx"),
         cmd!("call [lambda_ctx]")
     ])
 }
@@ -179,7 +175,7 @@ mod tests {
     #[test]
     fn free_var_simple() {
         let body = Box::new(Expression::Identifier("foo".to_string()));
-        let free_vars = lambda_free_vars("", &body);
+        let free_vars = lambda_free_vars(Some(""), &body);
         assert_eq!(free_vars, HashSet::from(["foo"]));
     }
 
@@ -189,14 +185,14 @@ mod tests {
             car: Box::new(Expression::Identifier("foo".to_string())),
             cdr: Box::new(Expression::Identifier("bar".to_string()))
         });
-        let free_vars = lambda_free_vars("", &body);
+        let free_vars = lambda_free_vars(Some(""), &body);
         assert_eq!(free_vars, HashSet::from(["foo", "bar"]));
     }
 
     #[test]
     fn free_var_not_arg() {
         let body = Box::new(Expression::Identifier("foo".to_string()));
-        let free_vars = lambda_free_vars("foo", &body);
+        let free_vars = lambda_free_vars(Some("foo"), &body);
         assert!(free_vars.is_empty());
     }
 
@@ -206,7 +202,7 @@ mod tests {
             car: Box::new(Expression::Identifier("foo".to_string())),
             cdr: Box::new(Expression::Identifier("bar".to_string()))
         });
-        let free_vars = lambda_free_vars("foo", &body);
+        let free_vars = lambda_free_vars(Some("foo"), &body);
         assert_eq!(free_vars, HashSet::from(["bar"]));
     }
 
@@ -217,7 +213,7 @@ mod tests {
             value: Box::new(Expression::Number(42)),
             body: Box::new(Expression::Identifier("inner".to_string()))
         });
-        let free_vars = lambda_free_vars("", &body);
+        let free_vars = lambda_free_vars(Some(""), &body);
         assert!(free_vars.is_empty());
     }
 
@@ -231,7 +227,7 @@ mod tests {
                 body: Box::new(Expression::Identifier("free".to_string()))
             })
         });
-        let free_vars = lambda_free_vars("", &body);
+        let free_vars = lambda_free_vars(Some(""), &body);
         assert_eq!(free_vars, HashSet::from(["free"]));
     }
 }

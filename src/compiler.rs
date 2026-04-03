@@ -1,7 +1,9 @@
+mod bindings;
 mod context;
 mod lambda;
 
 use anyhow::Result;
+use bindings::{compile_binding, compile_ident};
 use lambda::{compile_application, compile_lambda};
 
 use crate::ast::{Expression, ParenExpression};
@@ -42,16 +44,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
             cmd!("mov rettype, qword num_t"),
             cmd!("; number stored")
         ]),
-        Expression::Identifier(ident) => {
-            let addr = ctx.get(&ident)?;
-            Ok(join![
-                cmd!("; return identifier {}", ident),
-                cmd!("lea rdi, {}", addr),
-                cmd!("mov retval, [rdi]"),
-                cmd!("mov rettype, [rdi - 8]"),
-                cmd!("; {} returned", ident)
-            ])
-        }
+        Expression::Identifier(ident) => compile_ident(ctx, ident),
         Expression::Null => Ok(join![
             cmd!("; emitting null"),
             cmd!("xor retval, retval"),
@@ -121,28 +114,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; end times")
             ])
         }
-        ParenExpression::Binding { name, value, body } => {
-            let value_code = compile_expr(ctx, *value)?;
-            let _val_addr = ctx.stack_bind(name.clone());
-            let _type_addr = ctx.stack_alloc(16);
-            let body_code = compile_expr(ctx, *body)?;
-            ctx.stack_free(16);
-            ctx.unbind(&name)?;
-            Ok(join![
-                cmd!("; start binding"),
-                cmd!("; bind {}", name),
-                value_code,
-                cmd!("; store computed value of {}", name),
-                cmd!("push retval"),
-                cmd!("push rettype"),
-                cmd!("; binding body start"),
-                body_code,
-                cmd!("; unbind {}", name),
-                cmd!("pop rax"),
-                cmd!("pop rax"),
-                cmd!("; end binding")
-            ])
-        }
+        ParenExpression::Binding { name, value, body } => compile_binding(ctx, name, *value, *body),
         ParenExpression::Cons { car, cdr } => {
             let _heap_start = ctx.stack_alloc(8);
             let car_code = compile_expr(ctx, *car)?;
@@ -214,7 +186,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("mov rettype, qword num_t")
             ])
         }
-        ParenExpression::Lambda { arg, body } => compile_lambda(ctx, arg, body),
+        ParenExpression::Lambda { arg, body } => compile_lambda(ctx, Some(arg), *body),
         ParenExpression::Application { lambda, argument } => {
             compile_application(ctx, *lambda, *argument)
         }

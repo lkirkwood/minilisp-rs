@@ -38,8 +38,6 @@ _start:
     %define num_t           1
     %define cons_t          2
     %define lambda_t        3
-    ;; a pointer to a 16 byte value/type pair on the heap
-    %define heap_t          4
 
     ; exit with given code
     %macro exit 1
