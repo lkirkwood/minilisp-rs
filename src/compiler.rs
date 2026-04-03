@@ -10,7 +10,10 @@ use arithmetic::{compile_equals, compile_monus, compile_plus, compile_times};
 use bindings::{compile_binding, compile_ident};
 use cons::{compile_car, compile_cdr, compile_cons};
 use lambda::{compile_application, compile_lambda};
-use logic::{compile_condition, compile_logical_and, compile_logical_or, compile_null_check};
+use logic::{
+    compile_condition, compile_greater_than, compile_less_than, compile_logical_and,
+    compile_logical_not, compile_logical_or, compile_null_check,
+};
 
 use crate::ast::{Expression, ParenExpression};
 use context::Context;
@@ -83,7 +86,11 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
         }
         ParenExpression::LogicalAnd { first, second } => compile_logical_and(ctx, *first, *second),
         ParenExpression::LogicalOr { first, second } => compile_logical_or(ctx, *first, *second),
-        other => todo!("compile other parexprs like {other:?}"),
+        ParenExpression::LogicalNot { value } => compile_logical_not(ctx, *value),
+        ParenExpression::LessThan { first, second } => compile_less_than(ctx, *first, *second),
+        ParenExpression::GreaterThan { first, second } => {
+            compile_greater_than(ctx, *first, *second)
+        }
     }
 }
 
@@ -460,6 +467,22 @@ mod tests {
     compile_str!(compile_logical_or_other_true, "(∨ 0 99)", Some(1));
 
     compile_str!(compile_logical_false, "(∨ 0 0)", Some(0));
+
+    compile_str!(compile_logical_not_true, "(¬ 0)", Some(1));
+
+    compile_str!(compile_logical_not_false, "(¬ 42)", Some(0));
+
+    compile_str!(compile_less_than_true, "(‹ 42 99)", Some(1));
+
+    compile_str!(compile_less_than_false, "(‹ 42 0)", Some(0));
+
+    compile_str!(compile_less_than_equal_false, "(‹ 42 42)", Some(0));
+
+    compile_str!(compile_greater_than_true, "(› 42 0)", Some(1));
+
+    compile_str!(compile_greater_than_false, "(› 0 99)", Some(0));
+
+    compile_str!(compile_greater_than_equal_false, "(› 42 42)", Some(0));
 
     compile_str!(
         compile_omega_comb_lazily,

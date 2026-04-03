@@ -93,3 +93,83 @@ pub fn compile_logical_or(
         cmd!("; end logical or")
     ])
 }
+
+pub fn compile_logical_not(ctx: &mut Context, value: Expression) -> Result<String> {
+    let value_false_label = ctx.new_label();
+    let finish_label = ctx.new_label();
+    Ok(join![
+        cmd!("; start logical not"),
+        compile_expr(ctx, value)?,
+        cmd!("cmp retval, 0"),
+        cmd!("je {}", value_false_label),
+        cmd!("xor retval, retval"),
+        cmd!("jmp {}", finish_label),
+        cmd!("{}:", value_false_label),
+        cmd!("mov retval, 1"),
+        cmd!("{}:", finish_label),
+        cmd!("mov rettype, num_t"),
+        cmd!("; end logical not")
+    ])
+}
+
+pub fn compile_less_than(
+    ctx: &mut Context,
+    first: Expression,
+    second: Expression,
+) -> Result<String> {
+    let first_code = compile_expr(ctx, first)?;
+    ctx.stack_alloc(8);
+    let second_code = compile_expr(ctx, second)?;
+    ctx.stack_free(8);
+    let true_label = ctx.new_label();
+    let false_label = ctx.new_label();
+    let finish_label = ctx.new_label();
+    Ok(join![
+        cmd!("; start less than"),
+        first_code,
+        cmd!("push retval"),
+        second_code,
+        cmd!("pop rax"),
+        cmd!("cmp rax, retval"),
+        cmd!("jl {}", true_label),
+        cmd!("{}:", false_label),
+        cmd!("xor retval, retval"),
+        cmd!("jmp {}", finish_label),
+        cmd!("{}:", true_label),
+        cmd!("mov retval, 1"),
+        cmd!("{}:", finish_label),
+        cmd!("mov rettype, num_t"),
+        cmd!("; end less than")
+    ])
+}
+
+pub fn compile_greater_than(
+    ctx: &mut Context,
+    first: Expression,
+    second: Expression,
+) -> Result<String> {
+    let first_code = compile_expr(ctx, first)?;
+    ctx.stack_alloc(8);
+    let second_code = compile_expr(ctx, second)?;
+    ctx.stack_free(8);
+    let true_label = ctx.new_label();
+    let false_label = ctx.new_label();
+    let finish_label = ctx.new_label();
+    Ok(join![
+        cmd!("; start greater than"),
+        first_code,
+        cmd!("push retval"),
+        second_code,
+        cmd!("pop rax"),
+        cmd!("cmp rax, retval"),
+        cmd!("jg {}", true_label),
+        cmd!("{}:", false_label),
+        cmd!("xor retval, retval"),
+        cmd!("jmp {}", finish_label),
+        cmd!("{}:", true_label),
+        cmd!("mov retval, 1"),
+        cmd!("{}:", finish_label),
+        cmd!("mov rettype, num_t"),
+        cmd!("; end greater than")
+    ])
+}
