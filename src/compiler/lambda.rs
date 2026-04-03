@@ -160,6 +160,8 @@ pub fn compile_application(
     ctx.stack_free(8);
     Ok(join![
         cmd!("; start lambda application"),
+        cmd!("; store existing closure"),
+        cmd!("push lambda_ctx"),
         cmd!("; compute lambda"),
         lambda_code,
         cmd!("; store lambda pointer"),
@@ -170,7 +172,8 @@ pub fn compile_application(
         cmd!("mov rdx, retval"),
         cmd!("pop lambda_ctx"),
         cmd!("mov [lambda_ctx + 8], rdx"),
-        cmd!("call [lambda_ctx]")
+        cmd!("call [lambda_ctx]"),
+        cmd!("pop lambda_ctx")
     ])
 }
 
