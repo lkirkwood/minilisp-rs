@@ -91,6 +91,9 @@ main:
     push retval
     mov rsi, rsp
     xor rdx, rdx
+
+    cmp rettype, num_t
+    jne final_exit
     movzx rdx, byte [type_size + rettype]
 
     mov rax, sys_write
@@ -98,4 +101,5 @@ main:
     mov rdi, 1
     syscall
 
+final_exit:
     exit 0

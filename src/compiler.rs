@@ -608,6 +608,22 @@ mod tests {
     );
 
     compile_str!(
+        compile_lambda_as_arg,
+        "(λ f
+            (λ g
+               (f g)))",
+        0,
+        None
+    );
+
+    compile_str!(
+        compile_y_combinator,
+        "(≜ Y
+            (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+            ((Y (λ r (λ n (+ n 1)))) 41))"
+    );
+
+    compile_str!(
         compile_y_combinator_factorial,
         "(≜ Y
             (λ f ((λ x (f (x x))) (λ x (f (x x)))))
