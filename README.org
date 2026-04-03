@@ -91,6 +91,11 @@ List length.
 | ←      | U+2190  | Car (first element)     | ~(← (∷ 1 2)) → 1~      |
 | →      | U+2192  | Cdr (second element)    | ~(→ (∷ 1 2)) → 2~      |
 | ∘      | U+2218  | Null check              | ~(∘ ∅) → 1~            |
+| ‹      | U+2039  | Less than               | ~(‹ 1 2) → 1~          |
+| ›      | U+203A  | Greater than            | ~(› 1 2) → 0~          |
+| ∧      | U+2227  | Logical and             | ~(∧ 1 0) → 0~          |
+| ∨      | U+2228  | Logical or              | ~(∨ 1 0) → 1~          |
+| ¬      | U+00AC  | Logical not             | ~(¬ 0) → 1~            |
 |--------+---------+-------------------------+------------------------|
 
 *** Grammar
