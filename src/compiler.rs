@@ -311,4 +311,43 @@ mod tests {
                 (factorial 5)))",
         Some(120)
     );
+
+    compile_str!(
+        compile_z_combinator,
+        "(≜ Z
+            (λ f
+               ((λ x (f (λ v ((x x) v))))
+                   (λ x (f (λ v ((x x) v))))))
+            (≜ G
+               (λ r (λ n (+ n 1)))
+               (≜ add-one
+                  (Z G)
+                  (add-one 1))))",
+        Some(2)
+    );
+
+    compile_str!(
+        compile_fibonacci,
+        "(≜ Y
+            (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+            (≜ fib
+                (Y (λ f
+                    (λ n (? (= n 0)
+                        0
+                        (? (= n 1)
+                            1
+                            (+ (f (− n 1)) (f (− n 2))))))))
+                (fib 10)))",
+        Some(55)
+    );
+
+    compile_str!(
+        compile_list_length,
+        "(≜ Y
+            (λ f ((λ x (f (x x))) (λ x (f (x x)))))
+            (≜ length
+               (Y (λ f (λ lst (? (∘ lst) 0 (+ 1 (f (→ lst)))))))
+               (length (∷ 1 (∷ 2 (∷ 3 ∅))))))",
+        Some(3)
+    );
 }
