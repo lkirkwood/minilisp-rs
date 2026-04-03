@@ -76,7 +76,7 @@ fn expr_free_vars(expr: &Expression) -> HashSet<String> {
 
 /// Compile a lambda to ASM.
 pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) -> Result<String> {
-    let free_vars = lambda_free_vars(arg.as_ref().map(|s| s.as_str()), &body);
+    let free_vars = lambda_free_vars(arg.as_deref(), &body);
     // 8 bytes for value and 8 for type per free var,
     // 8 bytes for address of body label, and 16 for arg value and type.
     let heap_space = free_vars.len() * 16 + 24;
@@ -96,11 +96,11 @@ pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) 
     let mut offset = 8; // first qword of heap data is addr of body label
 
     if let Some(arg) = &arg {
-        ctx.bind(arg.to_string(), format!("[lambda_ctx + {}]", offset));
+        ctx.bind(arg.clone(), format!("[lambda_ctx + {offset}]"));
         offset += 8;
     }
 
-    for var in free_vars.iter() {
+    for var in &free_vars {
         let addr = ctx.get(var)?;
         prologue.push_str(&join![
             cmd!("; copying thunk ptr for {} to lambda heap section", var),
@@ -108,7 +108,7 @@ pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) 
             cmd!("mov [heap_start + {}], retval", offset)
         ]);
 
-        ctx.bind(var.to_string(), format!("[lambda_ctx + {}]", offset));
+        ctx.bind(var.clone(), format!("[lambda_ctx + {offset}]"));
         offset += 8;
     }
 

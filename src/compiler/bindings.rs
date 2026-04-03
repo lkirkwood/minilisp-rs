@@ -6,12 +6,12 @@ use super::{compile_expr, context::Context};
 
 pub fn compile_binding(
     ctx: &mut Context,
-    name: String,
+    name: &str,
     value: Expression,
     body: Expression,
 ) -> Result<String> {
     let thunk_code = compile_lambda(ctx, None, value)?;
-    let thunk_addr = ctx.stack_bind(name.clone());
+    let thunk_addr = ctx.stack_bind(name.to_string());
     let skip_label = ctx.new_label();
     Ok(join![
         cmd!("; start binding for {}", name),
@@ -25,11 +25,11 @@ pub fn compile_binding(
     ])
 }
 
-pub fn compile_ident(ctx: &mut Context, ident: String) -> Result<String> {
+pub fn compile_ident(ctx: &mut Context, ident: &str) -> Result<String> {
     Ok(join![
         cmd!("; force thunk for {}", ident),
         cmd!("push lambda_ctx"),
-        cmd!("mov lambda_ctx, {}", ctx.get(&ident)?),
+        cmd!("mov lambda_ctx, {}", ctx.get(ident)?),
         cmd!("call [lambda_ctx]"),
         cmd!("pop lambda_ctx")
     ])

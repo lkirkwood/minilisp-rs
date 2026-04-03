@@ -44,7 +44,7 @@ fn compile_expr(ctx: &mut Context, expr: Expression) -> Result<String> {
             cmd!("mov rettype, qword num_t"),
             cmd!("; number stored")
         ]),
-        Expression::Identifier(ident) => compile_ident(ctx, ident),
+        Expression::Identifier(ident) => compile_ident(ctx, &ident),
         Expression::Null => Ok(join![
             cmd!("; emitting null"),
             cmd!("xor retval, retval"),
@@ -120,7 +120,9 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; end times")
             ])
         }
-        ParenExpression::Binding { name, value, body } => compile_binding(ctx, name, *value, *body),
+        ParenExpression::Binding { name, value, body } => {
+            compile_binding(ctx, &name, *value, *body)
+        }
         ParenExpression::Cons { car, cdr } => {
             let _heap_start = ctx.stack_alloc(8);
             let car_code = compile_expr(ctx, *car)?;
