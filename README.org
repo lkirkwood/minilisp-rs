@@ -4,10 +4,20 @@ A tiny, "aggressively LL(1) parseable" LISP.
 
 Minilisp aims to provide just enough on top of the lambda calculus to be an usable programming language, and absolutely nothing more. It is essentially a read-only language; all the built in operators deliberately written with obscure unicode characters to make it difficult to write by hand but easy to parse.
 
+This implementation provides an interpreter via ~run~ command, a REPL via ~repl~, and a compiler to NASM x86 assembly via ~compile~.
+
 ** Demo
 Minilisp is capable of generating random, valid programs. This is useful for demonstration purposes and testing other implementations. This is still a work in progress, and does not always generate valid or interesting programs.
 
 [[./demo.gif]]
+
+** Using the compiler
+The compiled assembly doesn't depend on any dynamic libraries (libc etc.) so binaries should run on any version and distribution of linux - although they will only work on linux.
+
+To compile:
++ ~cargo run compile <path to minilisp code> > myprog.asm~
++ ~nasm -f elf64 myprog.asm -o myprog.o~
++ ~ld myprog.o -o myprog~
 
 ** Examples
 Simple add-one function.
