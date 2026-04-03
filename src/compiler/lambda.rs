@@ -14,7 +14,7 @@ use super::context::Context;
 // Free variable analysis
 
 /// Find the free variables referenced by the lambda.
-pub fn lambda_free_vars<'a>(arg: Option<&str>, body: &'a Expression) -> HashSet<&'a str> {
+pub fn lambda_free_vars(arg: Option<&str>, body: &Expression) -> HashSet<String> {
     let mut free_vars = expr_free_vars(body);
     if let Some(arg) = arg {
         free_vars.remove(arg);
@@ -22,11 +22,11 @@ pub fn lambda_free_vars<'a>(arg: Option<&str>, body: &'a Expression) -> HashSet<
     free_vars
 }
 
-fn expr_free_vars(expr: &Expression) -> HashSet<&str> {
+fn expr_free_vars(expr: &Expression) -> HashSet<String> {
     let mut free_vars = HashSet::new();
 
     if let Expression::Identifier(ident) = expr {
-        free_vars.insert(ident.as_str());
+        free_vars.insert(ident.clone());
     } else if let Expression::Paren(parexpr) = expr {
         match &**parexpr {
             ParenExpression::Plus { first, second }
@@ -95,12 +95,12 @@ pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) 
 
     let mut offset = 8; // first qword of heap data is addr of body label
 
-    if let Some(arg) = arg {
-        ctx.bind(arg, format!("[lambda_ctx + {}]", offset));
+    if let Some(arg) = &arg {
+        ctx.bind(arg.to_string(), format!("[lambda_ctx + {}]", offset));
         offset += 8;
     }
 
-    for var in free_vars {
+    for var in free_vars.iter() {
         let addr = ctx.get(var)?;
         prologue.push_str(&join![
             cmd!("; copying thunk ptr for {} to lambda heap section", var),
@@ -124,6 +124,14 @@ pub fn compile_lambda(ctx: &mut Context, arg: Option<String>, body: Expression) 
     ]);
 
     let body_code = compile_expr(ctx, body)?;
+
+    if let Some(arg) = arg {
+        ctx.unbind(&arg)?;
+    }
+
+    for var in free_vars {
+        ctx.unbind(&var)?;
+    }
 
     Ok(join![
         cmd!("; start lambda"),
@@ -178,7 +186,7 @@ mod tests {
     fn free_var_simple() {
         let body = Box::new(Expression::Identifier("foo".to_string()));
         let free_vars = lambda_free_vars(Some(""), &body);
-        assert_eq!(free_vars, HashSet::from(["foo"]));
+        assert_eq!(free_vars, HashSet::from(["foo".to_string()]));
     }
 
     #[test]
@@ -188,7 +196,10 @@ mod tests {
             cdr: Box::new(Expression::Identifier("bar".to_string()))
         });
         let free_vars = lambda_free_vars(Some(""), &body);
-        assert_eq!(free_vars, HashSet::from(["foo", "bar"]));
+        assert_eq!(
+            free_vars,
+            HashSet::from(["foo".to_string(), "bar".to_string()])
+        );
     }
 
     #[test]
@@ -205,7 +216,7 @@ mod tests {
             cdr: Box::new(Expression::Identifier("bar".to_string()))
         });
         let free_vars = lambda_free_vars(Some("foo"), &body);
-        assert_eq!(free_vars, HashSet::from(["bar"]));
+        assert_eq!(free_vars, HashSet::from(["bar".to_string()]));
     }
 
     #[test]
@@ -230,6 +241,6 @@ mod tests {
             })
         });
         let free_vars = lambda_free_vars(Some(""), &body);
-        assert_eq!(free_vars, HashSet::from(["free"]));
+        assert_eq!(free_vars, HashSet::from(["free".to_string()]));
     }
 }
