@@ -63,8 +63,33 @@ pub fn compile_logical_and(
         cmd!("cmp retval, 0"),
         cmd!("je {}", finish_label),
         cmd!("mov retval, 1"),
-        cmd!("jmp {}", finish_label),
         cmd!("{}:", finish_label),
-        cmd!("mov rettype, num_t")
+        cmd!("mov rettype, num_t"),
+        cmd!("; end logical and")
+    ])
+}
+
+pub fn compile_logical_or(
+    ctx: &mut Context,
+    first: Expression,
+    second: Expression,
+) -> Result<String> {
+    let true_label = ctx.new_label();
+    let finish_label = ctx.new_label();
+    Ok(join![
+        cmd!("; start logical or"),
+        cmd!("; compute first value"),
+        compile_expr(ctx, first)?,
+        cmd!("cmp retval, 0"),
+        cmd!("jne {}", true_label),
+        cmd!("; compute second value"),
+        compile_expr(ctx, second)?,
+        cmd!("cmp retval, 0"),
+        cmd!("je {}", finish_label),
+        cmd!("{}:", true_label),
+        cmd!("mov retval, 1"),
+        cmd!("{}:", finish_label),
+        cmd!("mov rettype, num_t"),
+        cmd!("; end logical or")
     ])
 }

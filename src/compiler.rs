@@ -10,7 +10,7 @@ use arithmetic::{compile_equals, compile_monus, compile_plus, compile_times};
 use bindings::{compile_binding, compile_ident};
 use cons::{compile_car, compile_cdr, compile_cons};
 use lambda::{compile_application, compile_lambda};
-use logic::{compile_condition, compile_logical_and, compile_null_check};
+use logic::{compile_condition, compile_logical_and, compile_logical_or, compile_null_check};
 
 use crate::ast::{Expression, ParenExpression};
 use context::Context;
@@ -82,6 +82,7 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             compile_condition(ctx, *predicate, *yes, *no)
         }
         ParenExpression::LogicalAnd { first, second } => compile_logical_and(ctx, *first, *second),
+        ParenExpression::LogicalOr { first, second } => compile_logical_or(ctx, *first, *second),
         other => todo!("compile other parexprs like {other:?}"),
     }
 }
@@ -451,6 +452,14 @@ mod tests {
     compile_str!(compile_logical_and_other_false, "(∧ 42 0)", Some(0));
 
     compile_str!(compile_logical_and_both_false, "(∧ 0 0)", Some(0));
+
+    compile_str!(compile_logical_or_both_true, "(∨ 42 99)", Some(1));
+
+    compile_str!(compile_logical_or_one_true, "(∨ 42 0)", Some(1));
+
+    compile_str!(compile_logical_or_other_true, "(∨ 0 99)", Some(1));
+
+    compile_str!(compile_logical_false, "(∨ 0 0)", Some(0));
 
     compile_str!(
         compile_omega_comb_lazily,
