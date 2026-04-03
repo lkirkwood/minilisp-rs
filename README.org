@@ -14,7 +14,7 @@ Minilisp is capable of generating random, valid programs. This is useful for dem
 ** Using the compiler
 The compiled assembly doesn't depend on any dynamic libraries (libc etc.) so binaries should run on any version and distribution of linux - although they will only work on linux.
 
-To compile:
+To compile you will need the ~nasm~ assembler and ~ld~ or another linker.
 + ~cargo run compile <path to minilisp code> > myprog.asm~
 + ~nasm -f elf64 myprog.asm -o myprog.o~
 + ~ld myprog.o -o myprog~
