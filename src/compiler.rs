@@ -59,16 +59,19 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
     match parexpr {
         ParenExpression::Plus { first, second } => {
             let first = compile_expr(ctx, *first)?;
+            ctx.stack_alloc(8);
             let second = compile_expr(ctx, *second)?;
+            ctx.stack_free(8);
             Ok(join![
                 cmd!("; begin plus"),
                 cmd!("; compute first plus operand"),
                 first,
                 cmd!("; store first plus operand"),
-                cmd!("mov [tmp_val], retval"),
+                cmd!("push retval"),
                 cmd!("; compute second plus operand"),
                 second,
-                cmd!("add retval, [tmp_val]"),
+                cmd!("pop rax"),
+                cmd!("add retval, rax"),
                 cmd!("jc generic_error"),
                 cmd!("; end plus")
             ])
@@ -77,21 +80,24 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
             let calc_label = ctx.new_label();
             let end_label = ctx.new_label();
             let second = compile_expr(ctx, *second)?;
+            ctx.stack_alloc(8);
             let first = compile_expr(ctx, *first)?;
+            ctx.stack_free(8);
             Ok(join![
                 cmd!("; begin monus"),
                 cmd!("; compute second monus operand first"),
                 second,
                 cmd!("; store second monus operand"),
-                cmd!("mov [tmp_val], retval"),
+                cmd!("push retval"),
                 cmd!("; compute first monus operand now"),
                 first,
-                cmd!("cmp retval, [tmp_val]"),
+                cmd!("pop rax"),
+                cmd!("cmp retval, rax"),
                 cmd!("jg {}", calc_label),
                 cmd!("xor retval, retval"),
                 cmd!("jmp {}", end_label),
                 cmd!("{}: ; perform calculation", calc_label),
-                cmd!("sub retval, [tmp_val]"),
+                cmd!("sub retval, rax"),
                 cmd!("{}: ; end of calculation", end_label),
                 cmd!("; end monus")
             ])
@@ -104,10 +110,10 @@ fn compile_parexpr(ctx: &mut Context, parexpr: ParenExpression) -> Result<String
                 cmd!("; compute first times operand"),
                 first,
                 cmd!("; store first times operand"),
-                cmd!("mov [tmp_val], retval"),
+                cmd!("push retval"),
                 cmd!("; compute second times operand"),
                 second,
-                cmd!("mov rax, [tmp_val]"),
+                cmd!("pop rax"),
                 cmd!("mul retval"),
                 cmd!("mov retval, rax"),
                 cmd!("jc generic_error"),

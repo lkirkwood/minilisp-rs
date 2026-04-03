@@ -3,8 +3,6 @@ global _start
 section .data
     ; type size array
     type_size:              db 1,8,16,8,8
-    ; temporary value store
-    tmp_val:                resb 8
 
 section .text
 _start:
