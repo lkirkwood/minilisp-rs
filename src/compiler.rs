@@ -104,9 +104,10 @@ mod tests {
 
     fn write_asm_file(expr: Expression, filename: &str) {
         let asm = compile(expr.clone()).unwrap();
+        let _ = fs::create_dir("asmtest");
         fs::write(format!("asmtest/{filename}.asm"), asm).unwrap();
 
-        let output = Command::new("sh")
+        let output = Command::new("bash")
             .args([
                 "-c",
                 &format!(
