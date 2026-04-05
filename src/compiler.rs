@@ -106,7 +106,7 @@ mod tests {
         let asm = compile(expr.clone()).unwrap();
         fs::write(format!("asmtest/{filename}.asm"), asm).unwrap();
 
-        let output = Command::new("bash")
+        let output = Command::new("sh")
             .args([
                 "-c",
                 &format!(
