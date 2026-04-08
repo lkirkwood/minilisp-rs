@@ -84,6 +84,7 @@ fn main() -> Result<()> {
             if arg == "help" {
                 help();
             } else if arg == "run" {
+                run(&read_file(args)?)?;
             } else if arg == "repl" {
                 run(&repl()?)?;
             } else if arg == "random" {
