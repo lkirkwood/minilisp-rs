@@ -1,3 +1,8 @@
+mod cons;
+mod lambda;
+mod logic;
+mod numerics;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Pointer},
@@ -5,8 +10,15 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use cons::{interpret_car, interpret_cdr, interpret_cons};
+use lambda::{interpret_application, interpret_lambda};
+use logic::{interpret_binding, interpret_condition, interpret_null_check};
+use numerics::{
+    interpret_equals, interpret_greater_than, interpret_less_than, interpret_logical_and,
+    interpret_logical_not, interpret_logical_or, interpret_monus, interpret_plus, interpret_times,
+};
 
-use crate::ast::{BoxExpr, Expression, ParenExpression};
+use crate::ast::{Expression, ParenExpression};
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -83,36 +95,11 @@ impl Display for Value {
 
 /// Lazily interpret a recursive expression.
 pub fn interpret(expr: Expression) -> Result<Value> {
-    interpret_expr(Box::new(expr), HashMap::new())?.eval()
+    interpret_expr(expr, HashMap::new())?.eval()
 }
 
-/// Performs the provided two-argument numeric operation lazily.
-fn two_arg_numeric_op(
-    first: BoxExpr,
-    second: BoxExpr,
-    idents: HashMap<String, Value>,
-    op: Box<dyn Fn(u64, u64) -> Result<u64>>,
-    op_char: char,
-) -> Result<Value> {
-    let first_val = interpret_expr(first, idents.clone())?;
-    let second_val = interpret_expr(second, idents)?;
-    Ok(Value::Application(Rc::new(move || {
-        if let Value::Number(first_num) = first_val.clone().eval()?
-            && let Value::Number(second_num) = second_val.clone().eval()?
-        {
-            Ok(Value::Number((op)(first_num, second_num)?))
-        } else {
-            bail!(
-                "The program must be invalid, because you can't use {op_char} \
-                    on non-numeric values.",
-            )
-        }
-    })))
-}
-
-#[allow(clippy::boxed_local)]
-fn interpret_expr(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value> {
-    match *expr {
+fn interpret_expr(expr: Expression, idents: HashMap<String, Value>) -> Result<Value> {
+    match expr {
         Expression::Paren(parexpr) => interpret_parexpr(*parexpr, idents),
         Expression::Null => Ok(Value::Null),
         Expression::Number(num) => Ok(Value::Number(num)),
@@ -129,166 +116,36 @@ fn interpret_expr(expr: BoxExpr, idents: HashMap<String, Value>) -> Result<Value
     }
 }
 
-#[allow(clippy::too_many_lines)]
-fn interpret_parexpr(
-    parexpr: ParenExpression,
-    mut idents: HashMap<String, Value>,
-) -> Result<Value> {
+fn interpret_parexpr(parexpr: ParenExpression, idents: HashMap<String, Value>) -> Result<Value> {
     match parexpr {
-        ParenExpression::Plus { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| match n0.checked_add(n1) {
-                Some(result) => Ok(result),
-                None => bail!("Integer addition of {n0} and {n1} overflowed."),
-            }),
-            '+',
-        ),
-        ParenExpression::Monus { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(n0.saturating_sub(n1))),
-            '−',
-        ),
-        ParenExpression::Times { first, second } => {
-            two_arg_numeric_op(first, second, idents, Box::new(|n0, n1| Ok(n0 * n1)), '×')
+        ParenExpression::Plus { first, second } => interpret_plus(idents, *first, *second),
+        ParenExpression::Monus { first, second } => interpret_monus(idents, *first, *second),
+        ParenExpression::Times { first, second } => interpret_times(idents, *first, *second),
+        ParenExpression::Equals { first, second } => interpret_equals(idents, *first, *second),
+        ParenExpression::LessThan { first, second } => interpret_less_than(idents, *first, *second),
+        ParenExpression::GreaterThan { first, second } => {
+            interpret_greater_than(idents, *first, *second)
         }
-        ParenExpression::Equals { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(u64::from(n0 == n1))),
-            '=',
-        ),
+        ParenExpression::LogicalAnd { first, second } => {
+            interpret_logical_and(idents, *first, *second)
+        }
+        ParenExpression::LogicalOr { first, second } => {
+            interpret_logical_or(idents, *first, *second)
+        }
+        ParenExpression::LogicalNot { value } => interpret_logical_not(&idents, *value),
+        ParenExpression::Cons { car, cdr } => interpret_cons(*car, *cdr, idents),
+        ParenExpression::Car { cons } => interpret_car(*cons, idents),
+        ParenExpression::Cdr { cons } => interpret_cdr(*cons, idents),
         ParenExpression::Condition { predicate, yes, no } => {
-            if interpret_expr(predicate, idents.clone())?.truthy()? {
-                interpret_expr(yes, idents)
-            } else {
-                interpret_expr(no, idents)
-            }
+            interpret_condition(idents, *predicate, *yes, *no)
         }
-        ParenExpression::Lambda { arg, body } => Ok(Value::Lambda(Lambda {
-            arg: arg.clone(),
-            body_expr: *body.clone(),
-            func: Rc::new(move |value| {
-                let mut local_idents = idents.clone();
-                local_idents.insert(arg.clone(), value);
-                interpret_expr(body.clone(), local_idents)
-            }),
-        })),
         ParenExpression::Binding { name, value, body } => {
-            idents.insert(name.clone(), interpret_expr(value, idents.clone())?);
-            interpret_expr(body, idents)
+            interpret_binding(idents, name, *value, *body)
         }
-        ParenExpression::Cons { car, cdr } => Ok(Value::Cons((
-            Box::new(interpret_expr(car, idents.clone())?),
-            Box::new(interpret_expr(cdr, idents)?),
-        ))),
-        ParenExpression::Car { cons } => {
-            let cons_val = interpret_expr(cons, idents)?;
-            Ok(Value::Application(Rc::new(move || {
-                if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
-                    Ok(*cons_cell.0)
-                } else {
-                    bail!(
-                        "The program must be invalid, because \"car\" only works on \
-                            cons cells, not {cons_val}"
-                    )
-                }
-            })))
-        }
-        ParenExpression::Cdr { cons } => {
-            let cons_val = interpret_expr(cons, idents)?;
-            Ok(Value::Application(Rc::new(move || {
-                if let Value::Cons(cons_cell) = cons_val.clone().eval()? {
-                    Ok(*cons_cell.1)
-                } else {
-                    bail!(
-                        "The program must be invalid, because \"cdr\" only works on \
-                            cons cells, not {cons_val}"
-                    )
-                }
-            })))
-        }
-        ParenExpression::NullCheck { value } => {
-            let value = interpret_expr(value, idents)?;
-            Ok(Value::Application(Rc::new(move || {
-                if let Value::Null = value.clone().eval()? {
-                    Ok(Value::Number(1))
-                } else {
-                    Ok(Value::Number(0))
-                }
-            })))
-        }
-        ParenExpression::LessThan { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(u64::from(n0 < n1))),
-            '‹',
-        ),
-        ParenExpression::GreaterThan { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(u64::from(n0 > n1))),
-            '›',
-        ),
-        ParenExpression::LogicalAnd { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(u64::from(n0 != 0 && n1 != 0))),
-            '∧',
-        ),
-        ParenExpression::LogicalOr { first, second } => two_arg_numeric_op(
-            first,
-            second,
-            idents,
-            Box::new(|n0, n1| Ok(u64::from(n0 != 0 || n1 != 0))),
-            '∨',
-        ),
-        ParenExpression::LogicalNot { value } => {
-            let value = interpret_expr(value, idents.clone())?;
-            Ok(Value::Application(Rc::new(move || {
-                if let Value::Number(value_num) = value.clone().eval()? {
-                    Ok(Value::Number(u64::from(value_num == 0)))
-                } else {
-                    bail!(
-                        "The program must be invalid, because you can't use \
-                                ¬ on a non-numeric value."
-                    )
-                }
-            })))
-        }
+        ParenExpression::NullCheck { value } => interpret_null_check(idents, *value),
+        ParenExpression::Lambda { arg, body } => Ok(interpret_lambda(idents, arg, *body)),
         ParenExpression::Application { lambda, argument } => {
-            let lambda_val = interpret_expr(lambda, idents.clone())?;
-            let arg_val = interpret_expr(argument, idents)?;
-
-            if let Value::Lambda(lambda) = lambda_val {
-                Ok(Value::Application(Rc::new(move || {
-                    lambda.clone().call(arg_val.clone())
-                })))
-            } else if let Value::Application(_) = lambda_val {
-                Ok(Value::Application(Rc::new(move || {
-                    let evaluated = lambda_val.clone().eval()?;
-                    if let Value::Lambda(lambda) = evaluated {
-                        lambda.call(arg_val.clone())
-                    } else {
-                        bail!(
-                            "The program must be invalid, because lambda application was used \
-                            lazily on something that was not a lambda - instead it was: {evaluated}"
-                        )
-                    }
-                })))
-            } else {
-                bail!(
-                    "The program must be invalid, because lambda application was used \
-                    on something that was not a lambda - instead it was: {lambda_val}"
-                )
-            }
+            interpret_application(idents, *lambda, *argument)
         }
     }
 }
