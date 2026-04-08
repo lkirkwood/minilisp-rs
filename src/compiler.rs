@@ -122,24 +122,14 @@ mod tests {
         assert_eq!(output.status.code(), Some(0));
     }
 
-    fn run_asm_file(filename: &str, expected_status: i32, expected_output: Option<u64>) {
+    fn run_asm_file(filename: &str, expected_status: i32, expected_output: &str) {
         let output = Command::new(format!("./asmtest/{filename}"))
             .output()
             .unwrap();
         dbg!(str::from_utf8(&output.stderr).unwrap());
         assert_eq!(output.status.code(), Some(expected_status));
-
-        if let Some(expected_bytes) = expected_output {
-            let mut actual_bytes_vec = output.stdout;
-            while actual_bytes_vec.len() < 8 {
-                actual_bytes_vec.push(0);
-            }
-            let mut actual_bytes = [0; 8];
-            actual_bytes.copy_from_slice(&actual_bytes_vec);
-            assert_eq!(u64::from_le_bytes(actual_bytes), expected_bytes);
-        } else {
-            assert!(output.stdout.is_empty());
-        }
+        let output_str = str::from_utf8(&output.stdout).unwrap();
+        assert_eq!(expected_output, output_str);
     }
 
     macro_rules! compile_str {
@@ -149,7 +139,7 @@ mod tests {
                 let ast = parse(tokenise($str).unwrap()).unwrap();
                 let filename = stringify!($name);
                 write_asm_file(ast, &filename);
-                run_asm_file(&filename, 0, Some(42))
+                run_asm_file(&filename, 0, "42")
             }
         };
 
@@ -187,22 +177,22 @@ mod tests {
         compile_plus_overflow_error,
         &format!("(+ {} 1)", u64::MAX),
         1,
-        None
+        ""
     );
 
     compile_str!(
         compile_plus_overflow_almost,
         &format!("(+ {} 0)", u64::MAX),
-        Some(u64::MAX)
+        &format!("{}", u64::MAX)
     );
 
     compile_str!(compile_monus, "(− 43 1)");
 
-    compile_str!(compile_monus_saturates, "(− 1 42)", Some(0));
+    compile_str!(compile_monus_saturates, "(− 1 42)", "0");
 
     compile_str!(compile_times, "(× 21 2)");
 
-    compile_str!(compile_equals, "(= 42 42)", Some(1));
+    compile_str!(compile_equals, "(= 42 42)", "1");
 
     compile_str!(compile_ident, "(≜ foo 42 foo)");
 
@@ -212,9 +202,9 @@ mod tests {
 
     compile_str!(compile_cons_cdr, "(≜ foo (∷ 99 42) (→ foo))");
 
-    compile_str!(compile_null_check, "(∘ ∅)", Some(1));
+    compile_str!(compile_null_check, "(∘ ∅)", "1");
 
-    compile_str!(compile_null_check_on_number, "(∘ 42)", Some(0));
+    compile_str!(compile_null_check_on_number, "(∘ 42)", "0");
 
     compile_str!(compile_lambda_application, "((λ foo 42) ∅)");
 
@@ -244,37 +234,37 @@ mod tests {
 
     compile_str!(compile_conditional, "(? 0 99 42)");
 
-    compile_str!(compile_logical_and_true, "(∧ 42 99)", Some(1));
+    compile_str!(compile_logical_and_true, "(∧ 42 99)", "1");
 
-    compile_str!(compile_logical_and_one_false, "(∧ 0 99)", Some(0));
+    compile_str!(compile_logical_and_one_false, "(∧ 0 99)", "0");
 
-    compile_str!(compile_logical_and_other_false, "(∧ 42 0)", Some(0));
+    compile_str!(compile_logical_and_other_false, "(∧ 42 0)", "0");
 
-    compile_str!(compile_logical_and_both_false, "(∧ 0 0)", Some(0));
+    compile_str!(compile_logical_and_both_false, "(∧ 0 0)", "0");
 
-    compile_str!(compile_logical_or_both_true, "(∨ 42 99)", Some(1));
+    compile_str!(compile_logical_or_both_true, "(∨ 42 99)", "1");
 
-    compile_str!(compile_logical_or_one_true, "(∨ 42 0)", Some(1));
+    compile_str!(compile_logical_or_one_true, "(∨ 42 0)", "1");
 
-    compile_str!(compile_logical_or_other_true, "(∨ 0 99)", Some(1));
+    compile_str!(compile_logical_or_other_true, "(∨ 0 99)", "1");
 
-    compile_str!(compile_logical_false, "(∨ 0 0)", Some(0));
+    compile_str!(compile_logical_false, "(∨ 0 0)", "0");
 
-    compile_str!(compile_logical_not_true, "(¬ 0)", Some(1));
+    compile_str!(compile_logical_not_true, "(¬ 0)", "1");
 
-    compile_str!(compile_logical_not_false, "(¬ 42)", Some(0));
+    compile_str!(compile_logical_not_false, "(¬ 42)", "0");
 
-    compile_str!(compile_less_than_true, "(‹ 42 99)", Some(1));
+    compile_str!(compile_less_than_true, "(‹ 42 99)", "1");
 
-    compile_str!(compile_less_than_false, "(‹ 42 0)", Some(0));
+    compile_str!(compile_less_than_false, "(‹ 42 0)", "0");
 
-    compile_str!(compile_less_than_equal_false, "(‹ 42 42)", Some(0));
+    compile_str!(compile_less_than_equal_false, "(‹ 42 42)", "0");
 
-    compile_str!(compile_greater_than_true, "(› 42 0)", Some(1));
+    compile_str!(compile_greater_than_true, "(› 42 0)", "1");
 
-    compile_str!(compile_greater_than_false, "(› 0 99)", Some(0));
+    compile_str!(compile_greater_than_false, "(› 0 99)", "0");
 
-    compile_str!(compile_greater_than_equal_false, "(› 42 42)", Some(0));
+    compile_str!(compile_greater_than_equal_false, "(› 42 42)", "0");
 
     compile_str!(
         compile_omega_comb_lazily,
@@ -289,7 +279,7 @@ mod tests {
             (λ g
                (f g)))",
         0,
-        None
+        "(λ)"
     );
 
     compile_str!(
@@ -310,7 +300,7 @@ mod tests {
                             1
                             (× n (f (− n 1)))))))
                 (factorial 5)))",
-        Some(120)
+        "120"
     );
 
     compile_str!(
@@ -324,7 +314,7 @@ mod tests {
                (≜ add-one
                   (Z G)
                   (add-one 1))))",
-        Some(2)
+        "2"
     );
 
     compile_str!(
@@ -339,7 +329,7 @@ mod tests {
                             1
                             (+ (f (− n 1)) (f (− n 2))))))))
                 (fib 10)))",
-        Some(55)
+        "55"
     );
 
     compile_str!(
@@ -349,6 +339,12 @@ mod tests {
             (≜ length
                (Y (λ f (λ lst (? (∘ lst) 0 (+ 1 (f (→ lst)))))))
                (length (∷ 1 (∷ 2 (∷ 3 ∅))))))",
-        Some(3)
+        "3"
+    );
+
+    compile_str!(
+        compile_print_cons,
+        "(∷ 1 (∷ 2 (∷ 3 ∅)))",
+        "(∷ 1 (∷ 2 (∷ 3 ∅)))"
     );
 }

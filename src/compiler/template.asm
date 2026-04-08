@@ -1,8 +1,12 @@
 global _start
 
 section .data
-    ; type size array
-    type_size:              db 1,8,16,8,8
+
+print_jump_table:
+    dq print_null
+    dq print_num
+    dq print_cons
+    dq print_lambda
 
 section .text
 _start:
@@ -44,6 +48,17 @@ _start:
         syscall
     %endmacro
 
+    ; write one byte from the argument
+    %macro write 2
+        push %1
+        mov rsi, rsp
+        mov rdx, %2
+        mov rax, sys_write
+        mov rdi, 1
+        syscall
+        pop rax
+    %endmacro
+
     ; set up heap
     mov rax, sys_brk
     xor rdi, rdi
@@ -75,8 +90,63 @@ ensure_mem:
 generic_error:
     exit 1
 
-main:
+print_retval:
+    jmp [print_jump_table + rettype*8]
 
+print_null:
+    write 0x8588E2, 3
+    ret
+
+print_num:
+    ;; divide by 10
+    ;; print remainder
+    ;; repeat with quotient
+    mov rax, retval
+    mov rbx, 10
+    xor r10, r10
+.div_loop:
+    xor rdx, rdx
+    div rbx
+    push rdx
+    inc r10
+    cmp rax, 0
+    jne .div_loop
+.write_loop:
+    pop rax
+    add rax, '0'
+    write rax, 1
+    dec r10
+    cmp r10, 0
+    jne .write_loop
+    ret
+
+print_lambda:
+    write 0x0028, 1             ; left paren
+    write 0xBBCE, 2             ; λ as big endian utf8
+    write 0x0029, 1             ; right paren
+    ret
+
+print_cons:
+    write 0x0028, 1             ; left paren
+    write 0xB788E2, 3           ; ∷ as big endian utf8
+    write 0x0020, 1             ; space
+    push retval
+.print_car:
+    mov rdi, retval
+    mov retval, [rdi]
+    mov rettype, [rdi + 8]
+    call print_retval
+    write 0x0020, 1             ; space
+.print_cdr:
+    pop rdi
+    add rdi, 16
+    mov retval, [rdi]
+    mov rettype, [rdi + 8]
+    call print_retval
+    write 0x0029, 1             ; right paren
+    ret
+
+main:
     ; set base pointer to current stack location
     mov rbp, rsp
 
@@ -86,18 +156,5 @@ main:
 
     ; print result and exiting
 
-    push retval
-    mov rsi, rsp
-    xor rdx, rdx
-
-    cmp rettype, num_t
-    jne final_exit
-    movzx rdx, byte [type_size + rettype]
-
-    mov rax, sys_write
-    ; set fd to 1 (stdout)
-    mov rdi, 1
-    syscall
-
-final_exit:
+    call print_retval
     exit 0
