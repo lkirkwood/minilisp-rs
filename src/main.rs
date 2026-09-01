@@ -6,26 +6,29 @@ use std::{
 
 use anyhow::Result;
 use compiler::compile;
-use randprog::random_program;
-
 #[macro_use]
 mod ast;
 mod compiler;
 mod interpreter;
 mod parser;
-mod randprog;
 mod tokeniser;
+
+#[cfg(feature = "randprog")]
+mod randprog;
+#[cfg(feature = "randprog")]
+use randprog::random_program;
 
 fn help() {
     eprintln!("minilisp - a tiny LISP interpreter.");
     eprintln!("Usage: minilisp [run FILE | repl | random | help] \n");
     eprintln!("Commands:");
-    eprintln!("\t run [FILE]     --   Run a program at FILE.");
-    eprintln!("\t                     If FILE is '-', the program will be read from stdin.\n");
-    eprintln!("\t repl           --   Enter a primitive read-eval-print environment.");
-    eprintln!("\t random         --   Generate a random minilisp program.");
-    eprintln!("\t compile        --   Compile a minilisp program to x86 assembly.");
     eprintln!("\t help           --   Print this message and exit.");
+    eprintln!("\t run [FILE]     --   Run a program at FILE.");
+    eprintln!("\t                     If FILE is '-', the program will be read from stdin.");
+    eprintln!("\t repl           --   Enter a primitive read-eval-print environment.");
+    eprintln!("\t compile        --   Compile a minilisp program to x86 assembly.");
+    #[cfg(feature = "randprog")]
+    eprintln!("\t random         --   Generate a random minilisp program.");
 }
 
 fn read_file(mut args: Args) -> Result<String> {
@@ -81,14 +84,18 @@ fn main() -> Result<()> {
         Some(arg) => {
             let arg = arg.as_str();
 
+            #[cfg(feature = "randprog")]
+            if arg == "random" {
+                println!("{}", random_program());
+                return Ok(());
+            }
+
             if arg == "help" {
                 help();
             } else if arg == "run" {
                 run(&read_file(args)?)?;
             } else if arg == "repl" {
                 run(&repl()?)?;
-            } else if arg == "random" {
-                println!("{}", random_program());
             } else if arg == "compile" {
                 let program = read_file(args)?;
                 let tokens = tokeniser::tokenise(&program)?;

@@ -8,7 +8,7 @@ readme = "README.org"
 
 [dependencies]
 anyhow = "1.0"
-rand = { version = "0.9" }
+rand = { version = "0.9", optional = true }
 
 [profile.dist]
 inherits = "release"
@@ -19,3 +19,6 @@ debug = false
 strip = true
 incremental = false
 panic = "abort"
+
+[features]
+randprog = ["dep:rand"]

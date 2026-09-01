@@ -9,6 +9,8 @@ This implementation provides an interpreter via ~run~ command, a REPL via ~repl~
 ** Demo
 Minilisp is capable of generating random, valid programs. This is useful for demonstration purposes and testing other implementations. This is still a work in progress, and does not always generate valid or interesting programs.
 
+Compile minilisp with `cargo build --features randprog` to enable this feature.
+
 [[./demo.gif]]
 
 ** Using the compiler
